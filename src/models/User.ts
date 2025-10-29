@@ -4,7 +4,7 @@ import {
 } from "sequelize-typescript";
 
 @Table({ tableName: "usuario", timestamps: false })
-export class User extends Model<User> {
+export class User extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column(DataType.INTEGER)
@@ -21,7 +21,7 @@ export class User extends Model<User> {
 
 // ...existing code...
 @Column({ type: DataType.STRING(255), allowNull: false })
-password_hash: string | undefined;
+password_hash!: string;
 
   @Unique
   @Column({ type: DataType.STRING(150), allowNull: false })
