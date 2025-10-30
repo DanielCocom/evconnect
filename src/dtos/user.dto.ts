@@ -6,7 +6,6 @@ export const RegisterDto = z.object({
   apellido_paterno: z.string().optional(),
   apellido_materno: z.string().optional(),
   email: z.string().email("Email inválido"),
-  telefono: z.string().optional(),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres")
 });
 
