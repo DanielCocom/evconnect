@@ -71,9 +71,12 @@ npm start
 - `POST /api/user/login` - Iniciar sesión
 - `GET /api/user/me` - Obtener perfil (requiere autenticación)
 
-### Documentación
+### Usuarios backoffice
 
-- `GET /api/docs` - Swagger UI
+- `POST /api/admin/user/create` - Registrar nuevo usuario
+- `POST /api/admin/user/login` - Iniciar sesión
+
+
 
 ### WebSocket
 
@@ -92,30 +95,6 @@ npm start
 
 ## 🔄 Cambios en la Refactorización
 
-### Eliminado
-- ❌ TypeScript y todas las dependencias de tipos (@types/*)
-- ❌ `ts-node-dev`, `typescript`
-- ❌ `sequelize-typescript` (reemplazado por Sequelize estándar)
-- ❌ `zod` (validaciones ahora son más simples)
-- ❌ Carpeta `types/`
-- ❌ Carpeta `dtos/`
-- ❌ Middleware `validateDto`
-- ❌ `tsconfig.json`
-
-### Optimizado
-- ✅ Código simplificado sin anotaciones de tipo
-- ✅ Validaciones inline en controladores
-- ✅ Uso de CommonJS (require/module.exports)
-- ✅ Scripts optimizados en package.json
-- ✅ Menos dependencias = instalación más rápida
-- ✅ Estructura de carpetas mantenida
-
-### Mejoras
-- Node.js nativo con flag `--watch` para desarrollo
-- Código más legible y directo
-- Menor complejidad en el proyecto
-- Menor uso de memoria
-
 ## 📝 Ejemplo de Uso
 
 ### Registro de usuario
@@ -125,6 +104,7 @@ curl -X POST http://localhost:4000/api/user/register \
   -d '{
     "nombre": "Juan",
     "apellido_paterno": "Pérez",
+    "apellido_materno": "Maria"
     "email": "juan@example.com",
     "password": "password123"
   }'
@@ -146,10 +126,25 @@ curl -X GET http://localhost:4000/api/user/me \
   -H "Authorization: Bearer <token>"
 ```
 
-## 🛠️ Desarrollo
+### Registro de usuario
+```bash
+curl -X POST http://localhost:4000/api/admin/user/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_franquicia": "Juan",
+    "nombre": "Juan",
+    "password": "1234567890",
+    "email": "juan@example.com",
+    "rol": "Administrador"
+  }'
+```
 
-El proyecto ahora usa Node.js puro sin necesidad de compilación. Los cambios se reflejan automáticamente en modo desarrollo gracias al flag `--watch`.
-
-## 📄 Licencia
-
-ISC
+### Login
+```bash
+curl -X POST http://localhost:4000/api/admin/user/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan@example.com",
+    "password": "password123"
+  }'
+```

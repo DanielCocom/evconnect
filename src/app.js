@@ -15,7 +15,7 @@ app.use(responseHandler());
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/user", userRoutes);
-app.use("/api/admin/user", userBackOfficeRouter);
+app.use("/api/admin/", userBackOfficeRouter);
 
 
 
