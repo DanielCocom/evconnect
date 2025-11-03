@@ -1,14 +1,12 @@
-import http from "http";
-import app from "./app";
-import { testConnection } from "./db/sequelize";
-import { initWebSocketServer } from "./ws/wsServer";
-import dotenv from "dotenv";
-dotenv.config();
+const http = require("http");
+const app = require("./app");
+const { testConnection } = require("./db/sequelize");
+const { initWebSocketServer } = require("./ws/wsServer");
+require("dotenv").config();
 
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-// Inicia WebSocket server en el mismo puerto para compartir HTTP
 initWebSocketServer(server);
 
 const start = async () => {
