@@ -126,7 +126,7 @@ curl -X GET http://localhost:4000/api/user/me \
   -H "Authorization: Bearer <token>"
 ```
 
-### Registro de usuario
+### CREAR USUARIO BACKOFFICE
 ```bash
 curl -X POST http://localhost:4000/api/admin/user/create \
   -H "Content-Type: application/json" \
@@ -139,7 +139,7 @@ curl -X POST http://localhost:4000/api/admin/user/create \
   }'
 ```
 
-### Login
+### LOGIN USUARIO BACKOFFICE
 ```bash
 curl -X POST http://localhost:4000/api/admin/user/login \
   -H "Content-Type: application/json" \
