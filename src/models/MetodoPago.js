@@ -1,39 +1,34 @@
 module.exports = (sequelize, DataTypes) => {
-  const UserBackOffice = sequelize.define('UserBackOffice', {
-    id_admin: {
+  const MetodoPago = sequelize.define('MetodoPago', {
+    id_pago: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true
     },
-    id_franquicia: {
+    id_usuario: {
       type: DataTypes.INTEGER,
       allowNull: false
     },
-    nombre: {
-      type: DataTypes.STRING(100),
+    tipo: {
+      type: DataTypes.STRING(50),
       allowNull: false
     },
-    email: {
-      type: DataTypes.STRING(150),
-      allowNull: false,
-      unique: true
-    },
-    rol: {
-      type: DataTypes.STRING(50),
-      defaultValue: 'tecnico'
-    },
-    password_hash: {
+    token_referencia: {
       type: DataTypes.TEXT,
       allowNull: false
+    },
+    fecha_registro: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
     },
     activo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
     }
   }, {
-    tableName: 'usuario_backoffice',
+    tableName: 'metodo_pago',
     timestamps: false
   });
 
-  return UserBackOffice;
+  return MetodoPago;
 };

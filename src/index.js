@@ -10,12 +10,10 @@ const server = http.createServer(app);
 initWebSocketServer(server);
 
 const start = async () => {
-  await testConnection();
   server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 };
-
 
 
 start().catch(err => {

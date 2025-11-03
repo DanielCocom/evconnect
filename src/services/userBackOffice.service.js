@@ -74,6 +74,9 @@ class UserBackOfficeService {
     return { token, user: { id: user.id_admin, nombre: user.nombre, email: user.email, rol: user.rol } };
   }
 
+  static async GetGeneralStats(){
+    
+  }
 
 }
 

@@ -1,41 +1,19 @@
-const { Sequelize } = require("sequelize");
-require("dotenv").config();
+const { Sequelize } = require('sequelize');
+require('dotenv').config(); // Asegúrate de que las variables de entorno estén cargadas
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set");
-}
+const { DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT } = process.env;
 
-const sequelize = new Sequelize(connectionString, {
-  dialect: "postgres",
-  logging: process.env.NODE_ENV === "development" ? console.log : false,
-  dialectOptions: {
-    ssl: { 
-      require: true, 
-      rejectUnauthorized: false 
-    }
-  },
+const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
+  host: DB_HOST,
+  port: DB_PORT,
+  dialect: 'postgres',
+  logging: false, // Cambia a console.log para ver las consultas SQL
   pool: {
-    max: 10,
+    max: 5,
     min: 0,
     acquire: 30000,
     idle: 10000
   }
 });
 
-// Importar modelos
-const User = require("../models/User")(sequelize);
-const UserBackOffice = require("../models/UserBackOffice")(sequelize);
-
-
-const testConnection = async () => {
-  try {
-    await sequelize.authenticate();
-    console.log("✅ DB connected (Neon)");
-  } catch (err) {
-    console.error("❌ DB connection error:", err);
-    throw err;
-  }
-};
-
-module.exports = { sequelize, User,UserBackOffice, testConnection };
+module.exports = sequelize;
