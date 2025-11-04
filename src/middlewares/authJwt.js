@@ -54,4 +54,22 @@ const authenticateToken = (req, res, next) => {
 };
 };
 
-module.exports = { authenticateToken };
+function authenticateJWT(req, res, next) {
+  // 1) Obtener token del header Authorization: Bearer <token>
+  const auth = req.headers.authorization || (req.cookies && req.cookies.token);
+  if (!auth) return res.status(401).json({ message: 'Token no proporcionado' });
+
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+
+  jwt.verify(token, JWT_SECRET, (err, payload) => {
+    if (err) {
+      // err.name puede ser 'TokenExpiredError', 'JsonWebTokenError', etc.
+      return res.status(401).json({ message: 'Token inválido', reason: err.message });
+    }
+    // adjunta la información del token en req.user para accederla en rutas
+    req.user = payload;
+    next();
+  });
+}
+
+module.exports = { authenticateToken, authenticateJWT };

@@ -70,7 +70,7 @@ class UserBackOfficeService {
 
 
     // 5. Generar y devolver el token
-    const token = sinToken(payload, String(user.id_admin));
+    const token = signToken(payload, String(user.id_admin));
     
 
     return { token, user: { id: user.id_admin, nombre: user.nombre, email: user.email, rol: user.rol } };

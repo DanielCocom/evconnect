@@ -1,13 +1,15 @@
 const { Router } = require("express");
 const { FranchiseController } = require("../controllers/franchaise.controller");
 
-const { authenticateToken } = require("../middlewares/authJwt"); // Tu middleware de autenticación
+const { authenticateToken, authenticateJWT } = require("../middlewares/authJwt"); 
+
 
 const router = Router();
 
 router.get(
   "/dashboard",
-  authenticateToken, // Protegemos la ruta
+  authenticateToken, 
+  authenticateJWT,
   FranchiseController.getDashboardStats
 );
 
