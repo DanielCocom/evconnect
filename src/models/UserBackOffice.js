@@ -31,7 +31,8 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: true
     }
   }, {
-    tableName: 'usuario_backoffice',
+    tableName: "usuario_backoffice",
+    
     timestamps: false
   });
 

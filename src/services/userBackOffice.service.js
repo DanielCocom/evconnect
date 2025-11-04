@@ -1,6 +1,7 @@
 const { hashPassword, comparePassword } = require("../utils/hash");
 const { signToken } = require("../utils/jwt");
-const { UserBackOffice } = require("../db/sequelize");
+// Importa desde el archivo index de la carpeta models
+const { UserBackOffice } = require("../models");
 
 class UserBackOfficeService {
   static async CreateUserBackOffice(data) {
@@ -67,16 +68,15 @@ class UserBackOfficeService {
       franquiciaId: user.id_franquicia
     };
 
+
     // 5. Generar y devolver el token
-    const token = signToken(payload, String(user.id_admin));
+    const token = sinToken(payload, String(user.id_admin));
     
 
     return { token, user: { id: user.id_admin, nombre: user.nombre, email: user.email, rol: user.rol } };
   }
 
-  static async GetGeneralStats(){
-    
-  }
+
 
 }
 

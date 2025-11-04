@@ -1,6 +1,5 @@
 const http = require("http");
 const app = require("./app");
-const { testConnection } = require("./db/sequelize");
 const { initWebSocketServer } = require("./ws/wsServer");
 require("dotenv").config();
 

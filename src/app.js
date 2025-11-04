@@ -5,6 +5,7 @@ const swaggerSpec = require("./docs/swagger");
 const userRoutes = require("./routes/user.routes");
 const userBackOfficeRouter = require("./routes/userBackOffice.routes");
 const responseHandler = require('./middlewares/responseHandler');
+const franquiciaRoutes = require('./routes/franquicia.routes');
 
 
 const app = express();
@@ -16,6 +17,8 @@ app.use(responseHandler());
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/user", userRoutes);
 app.use("/api/admin/", userBackOfficeRouter);
+
+app.use("/api/franquicia", franquiciaRoutes);
 
 
 
