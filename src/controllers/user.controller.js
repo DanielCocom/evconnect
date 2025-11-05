@@ -1,5 +1,5 @@
 const { UserService } = require("../services/user.service");
-const { User } = require("../db/sequelize");
+const { User } = require("../models");
 
 class UserController {
   static async register(req, res, next) {

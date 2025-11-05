@@ -1,4 +1,4 @@
-const { User } = require("../db/sequelize");
+const { User } = require("../models");
 const { hashPassword, comparePassword } = require("../utils/hash");
 const { signToken } = require("../utils/jwt");
 
