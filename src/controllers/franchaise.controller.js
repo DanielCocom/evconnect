@@ -4,11 +4,16 @@ class FranchiseController {
 
     static async getDashboardStats(req, res) {
         try {
-            
+            // El middleware 'authenticateToken' debe adjuntar el payload del token a req.user
+            // Asumimos que req.user contiene { id, rol, franquiciaId }
+            const userId = req.user?.id;
+            const rol = req.user?.rol;
             const franquiciaId = req.user?.franquiciaId;
+
             if (!franquiciaId) {
                 return res.error(401, "Usuario no está asociado a una franquicia.");
             }
+
 
             const stats = await FranchiseService.getDashboardStats(franquiciaId);
             return res.ok(stats, "Estadísticas obtenidas");
