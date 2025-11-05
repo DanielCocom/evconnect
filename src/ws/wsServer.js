@@ -1,41 +1,12 @@
-// ...existing code...
+// src/ws/index.js
 const WebSocket = require("ws");
 const { verifyToken } = require("../utils/jwt");
-const { Estacion } = require("../models"); // modelo Estacion
+const { Cargador } = require("../models"); // Usamos Cargador, no Estacion
+const pubsub = require("./pubsub");
+const messageHandler = require("./message.handler");
 
 let wss;
-const publishers = new Map(); // estacionId -> ws (publisher)
-const subscribers = new Map(); // estacionId -> Set<ws>
 const HEARTBEAT_INTERVAL = 30000;
-
-function addSubscriber(estacionId, ws) {
-  const key = String(estacionId);
-  if (!subscribers.has(key)) subscribers.set(key, new Set());
-  subscribers.get(key).add(ws);
-  ws._subscribedTo = key;
-}
-
-function removeSubscriber(ws) {
-  const key = ws._subscribedTo;
-  if (!key) return;
-  const set = subscribers.get(key);
-  if (set) {
-    set.delete(ws);
-    if (set.size === 0) subscribers.delete(key);
-  }
-}
-
-function broadcastToSubscribers(estacionId, message) {
-  const key = String(estacionId);
-  const set = subscribers.get(key);
-  if (!set) return;
-  const payload = typeof message === "string" ? message : JSON.stringify(message);
-  set.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
-  });
-}
 
 function initWebSocketServer(server) {
   wss = new WebSocket.WebSocketServer({ server, path: "/ws" });
@@ -56,92 +27,69 @@ function initWebSocketServer(server) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const token = url.searchParams.get("token");
-      const role = (url.searchParams.get("role") || "client").toLowerCase(); // 'publisher' | 'client'
-      const estacionId = url.searchParams.get("estacionId");
+      const role = (url.searchParams.get("role") || "client").toLowerCase();
+      // ¡CAMBIO CLAVE: Usamos cargadorId!
+      const cargadorId = url.searchParams.get("cargadorId"); 
 
-      // Opcional: permitir conexiones sin token para testing, pero recomendamos token
-      let payload = null;
-      if (token) {
-        // try {
-        //   payload = verifyToken(token); // [`verifyToken`](src/utils/jwt.js)
-        // } catch (err) {
-        //   ws.close(4003, "Invalid token");
-        //   return;
-        // }
+      if (!cargadorId) {
+        return ws.close(4001, "cargadorId es requerido");
+      }
+      
+      // 1. Validar que el Cargador exista
+      try {
+        const cargador = await Cargador.findByPk(cargadorId, { attributes: ['id_cargador'] });
+        if (!cargador) {
+          return ws.close(4005, "Cargador not found");
+        }
+      } catch (err) {
+        console.error("Error checking Cargador:", err);
+        return ws.close(5000, "DB Error");
       }
 
+      // 2. Autenticación (¡Descomentada y obligatoria!)
+      if (!token) {
+        return ws.close(4003, "Token requerido");
+      }
+      
+      let tokenPayload;
+      try {
+        tokenPayload = verifyToken(token); // Usamos tu JWT util
+        ws.userId = tokenPayload.id; // ¡Guardamos el ID del usuario en la conexión!
+        ws.userRole = tokenPayload.role;
+      } catch (err) {
+        return ws.close(4003, "Token invalido");
+      }
+      
+      // 3. Ruteo de Conexión
       if (role === "publisher") {
-        if (!estacionId) {
-          ws.close(4004, "publisher requires estacionId");
-          return;
-        }
+        // Lógica de seguridad: Solo un rol 'admin' o 'tecnico' puede ser publisher?
+        // if (ws.userRole !== 'admin') {
+        //   return ws.close(4001, "No autorizado para ser publisher");
+        // }
 
-        // Validar que la estación existe (opcional)
-        try {
-          const est = await Estacion.findByPk(estacionId);
-          if (!est) {
-            ws.close(4005, "Estacion not found");
-            return;
-          }
-        } catch (err) {
-          console.error("Error checking Estacion:", err);
-        }
+        pubsub.registerPublisher(cargadorId, ws);
+        ws.send(JSON.stringify({ type: "connected", role: "publisher", cargadorId }));
 
-        publishers.set(String(estacionId), ws);
-        ws._publisherFor = String(estacionId);
+        // Delegamos el manejo de mensajes
+        ws.on("message", (data) => messageHandler.handlePublisherMessage(cargadorId, data));
+        ws.on("close", () => pubsub.removePublisher(cargadorId));
 
-        ws.send(JSON.stringify({ type: "connected", role: "publisher", estacionId }));
-
-        ws.on("message", (data) => {
-          try {
-            const msg = JSON.parse(data.toString());
-            // Mensaje del publisher -> reenvía a todos los subscribers de la estación
-            broadcastToSubscribers(estacionId, { from: "publisher", payload: msg, timestamp: Date.now() });
-          } catch (err) {
-            console.error("Invalid publisher message", err);
-          }
-        });
-
-        ws.on("close", () => {
-          publishers.delete(String(estacionId));
-        });
       } else {
-        // subscriber / client
-        if (!estacionId) {
-          ws.close(4006, "client requires estacionId query param to subscribe");
-          return;
-        }
+        // rol 'client' (app móvil o backoffice)
+        pubsub.addSubscriber(cargadorId, ws);
+        ws.send(JSON.stringify({ type: "subscribed", cargadorId }));
 
-        addSubscriber(estacionId, ws);
-
-        // Enviar último estado si hay publisher conectado (puedes almacenar lastState para mayor robustez)
-        const pub = publishers.get(String(estacionId));
+        // Sincronización inicial: Pedir al cargador su estado actual
+        const pub = pubsub.publishers.get(String(cargadorId));
         if (pub && pub.readyState === WebSocket.OPEN) {
           pub.send(JSON.stringify({ type: "sync_request", from: "server" }));
         }
 
-        ws.send(JSON.stringify({ type: "subscribed", estacionId }));
-
-        ws.on("message", (data) => {
-          // Mensajes desde clientes web (por ejemplo, comandos hacia la estación)
-          try {
-            const msg = JSON.parse(data.toString());
-            // Si existe publisher, reencaminar comando
-            const pubWs = publishers.get(String(estacionId));
-            if (pubWs && pubWs.readyState === WebSocket.OPEN) {
-              pubWs.send(JSON.stringify({ from: "client", payload: msg }));
-            } else {
-              ws.send(JSON.stringify({ type: "error", message: "Publisher not connected" }));
-            }
-          } catch (err) {
-            console.error("Invalid client message", err);
-          }
-        });
-
-        ws.on("close", () => {
-          removeSubscriber(ws);
-        });
+        // Delegamos el manejo de mensajes
+        ws.on("message", (data) => messageHandler.handleClientMessage(cargadorId, ws, data));
+        ws.on("close", () => pubsub.removeSubscriber(ws));
       }
+
     } catch (err) {
       console.error("WS connection setup error:", err);
       ws.close(1011, "Internal error");
@@ -152,5 +100,8 @@ function initWebSocketServer(server) {
   console.log("WebSocket server initialized on /ws");
 }
 
-// Permitir enviar desde otros módulos: require('./wsServer').broadcastToSubscribers(...)
-module.exports = { initWebSocketServer, broadcastToSubscribers };
+module.exports = { 
+  initWebSocketServer, 
+  // Exportamos broadcast para usarlo desde otros servicios (ej. un servicio de alertas)
+  broadcastToSubscribers: pubsub.broadcastToSubscribers 
+};
