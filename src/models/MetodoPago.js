@@ -17,6 +17,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false
     },
+    es_predeterminado: { // AGREGAR ESTE CAMPO
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     fecha_registro: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW

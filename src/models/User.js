@@ -34,9 +34,19 @@ module.exports = (sequelize) => {
       type: DataTypes.DECIMAL(10, 2),
       defaultValue: 0
     },
+    stripe_customer_id: {
+      type: DataTypes.STRING(100),
+      unique: true,
+      allowNull: true
+    },
+    tarjeta_verificada: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     fecha_registro: {
       type: DataTypes.DATE,
-      field: "fecha_registro"
+      field: "fecha_registro",
+      defaultValue: DataTypes.NOW
     }
   }, {
     tableName: "usuario",

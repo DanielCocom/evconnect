@@ -1,6 +1,7 @@
 const { User } = require("../models");
 const { hashPassword, comparePassword } = require("../utils/hash");
 const { signToken } = require("../utils/jwt");
+const { StripeService } = require("./stripe/stripe.service");
 
 class UserService {
   static async createUser(data) {
@@ -16,12 +17,31 @@ class UserService {
     }
 
     const password_hashed = await hashPassword(password);
+    
+    // Crear customer en Stripe ANTES de crear el usuario
+    let stripeCustomerId = null;
+    try {
+      const stripeCustomer = await StripeService.createCustomer({
+        email,
+        name: `${nombre} ${apellido_paterno || ''} ${apellido_materno || ''}`.trim(),
+        metadata: {
+          source: 'evconnect_app'
+        }
+      });
+      stripeCustomerId = stripeCustomer.id;
+    } catch (stripeError) {
+      console.error('Error creando customer en Stripe:', stripeError);
+      // Puedes decidir si fallas el registro o continúas sin Stripe
+      // Por ahora, lo logueamos pero continuamos
+    }
+
     const user = await User.create({
       nombre,
       apellido_paterno,
       apellido_materno,
       email,
-      password_hash: password_hashed
+      password_hash: password_hashed,
+      stripe_customer_id: stripeCustomerId
     });
 
     const userSafe = user.toJSON();
