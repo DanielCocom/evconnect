@@ -8,6 +8,9 @@ const responseHandler = require('./middlewares/responseHandler');
 const franquiciaRoutes = require('./routes/franquicia.routes');
 const metodoPagoRoutes = require('./routes/metodoPago.routes');
 const { handleStripeWebhook, verifyStripeWebhook } = require('./middlewares/stripe.webhook');
+const estacionRoutes = require('./routes/estacion.routes'); // <-- NUEVA IMPORTACIÓN
+const sesionCargaRoutes= require('./routes/sesionCarga.routes'); // <-- NUEVA IMPORTACIÓN
+
 
 const app = express();
 
@@ -29,6 +32,10 @@ app.use("/api/user", userRoutes);
 app.use("/api/admin/", userBackOfficeRouter);
 app.use("/api/franquicia", franquiciaRoutes);
 app.use('/api/payment-methods', metodoPagoRoutes); // Cambio de ruta para evitar conflictos
+app.use('/api/stations', estacionRoutes); // <-- NUEVO REGISTRO
+app.use('/api/sessions', sesionCargaRoutes); // <-- NUEVO REGISTRO
+
+
 
 // Error handler mejorado
 app.use((err, req, res, next) => {
