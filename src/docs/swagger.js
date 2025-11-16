@@ -51,9 +51,22 @@ const options = {
       }
     },
     servers: [
+      // Servidor de producción (si existe RENDER_EXTERNAL_URL o similar)
+      ...(process.env.RENDER_EXTERNAL_URL ? [{
+        url: process.env.RENDER_EXTERNAL_URL,
+        description: "Servidor de producción (Render)"
+      }] : []),
+      
+      // Servidor personalizado desde variable de entorno
+      ...(process.env.API_URL && process.env.API_URL !== "http://localhost:4000" ? [{
+        url: process.env.API_URL,
+        description: "Servidor configurado"
+      }] : []),
+      
+      // Servidor de desarrollo (siempre disponible como fallback)
       { 
-        url: process.env.API_URL || "http://localhost:4000",
-        description: "Servidor de desarrollo"
+        url: "http://localhost:4000",
+        description: "Servidor de desarrollo local"
       }
     ],
     tags: [
