@@ -72,10 +72,14 @@ const options = {
       {
         name: "Métodos de Pago",
         description: "Gestión de métodos de pago con Stripe - Vincular, listar y eliminar tarjetas"
+      },
+      {
+        name: "Tarifas",
+        description: "Gestión de tarifas de carga - CRUD completo para administración de precios por estación y tipo de carga"
       }
     ]
   },
-  apis: ["./src/routes/*.js", "./src/models/*.js"]
+  apis: ["./src/routes/*.js", "./src/routes/admin/*.js", "./src/models/*.js"]
 };
 
 const swaggerSpec = swaggerJSDoc(options);

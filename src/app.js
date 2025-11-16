@@ -10,7 +10,7 @@ const metodoPagoRoutes = require('./routes/metodoPago.routes');
 const { handleStripeWebhook, verifyStripeWebhook } = require('./middlewares/stripe.webhook');
 const estacionRoutes = require('./routes/estacion.routes'); // <-- NUEVA IMPORTACIÓN
 const sesionCargaRoutes= require('./routes/sesionCarga.routes'); // <-- NUEVA IMPORTACIÓN
-
+const tarifaRoutes = require('./routes/admin/tarifa.routes'); 
 
 const app = express();
 
@@ -34,6 +34,7 @@ app.use("/api/franquicia", franquiciaRoutes);
 app.use('/api/payment-methods', metodoPagoRoutes); // Cambio de ruta para evitar conflictos
 app.use('/api/stations', estacionRoutes); // <-- NUEVO REGISTRO
 app.use('/api/sessions', sesionCargaRoutes); // <-- NUEVO REGISTRO
+app.use('/api/admin/tarifas', tarifaRoutes); // <-- NUEVO REGISTRO DEDICADO
 
 
 
