@@ -20,6 +20,25 @@ class EstacionController {
             return res.error(err.status || 500, err.message || "Error al obtener estaciones");
         }
     }
+    static async getStationsByFranchise(req, res) {
+        try {
+            const id_franquicia = req.user.franquiciaId
+            if (id_franquicia === undefined || id_franquicia === null) {
+                return res.error(400, 'Se requiere franquiciaId');
+            }
+
+            const result = await EstacionService.getStationsByFranchise(id_franquicia);
+
+            if (result.length === 0) {
+                return res.ok([], "No se encontraron estaciones para la franquicia.", { code: "NO_STATIONS" });
+            }
+
+            return res.ok(result, "Lista de estaciones de la franquicia obtenida correctamente");
+        } catch (err) {
+            console.error('Error en EstacionController.getStationsByFranchise:', err);
+            return res.error(err.status || 500, err.message || "Error al obtener estaciones por franquicia");
+        }
+    }
 }
 
 module.exports = { EstacionController };

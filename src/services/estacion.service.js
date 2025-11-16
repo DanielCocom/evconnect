@@ -66,6 +66,23 @@ class EstacionService {
 
         return consolidated;
     }
+    static async getStationsByFranchise(id_franquicia) {
+        if (id_franquicia === undefined || id_franquicia === null) {
+            throw new Error('Se requiere id_franquicia');
+        }
+
+        // Obtener estaciones asociadas a la franquicia, incluyendo cargadores (si existen)
+        const estaciones = await Estacion.findAll({
+            where: { id_franquicia },
+        });
+
+        // Normalizar respuesta a JSON y renombrar la relación para uso externo
+        return estaciones.map(est => {
+            const estacionJson = est.toJSON();
+            delete estacionJson.Cargadores;
+            return estacionJson;
+        });
+    }
 }
 
 module.exports = { EstacionService };
