@@ -11,6 +11,7 @@ const { handleStripeWebhook, verifyStripeWebhook } = require('./middlewares/stri
 const estacionRoutes = require('./routes/estacion.routes'); // <-- NUEVA IMPORTACIÓN
 const sesionCargaRoutes= require('./routes/sesionCarga.routes'); // <-- NUEVA IMPORTACIÓN
 const tarifaRoutes = require('./routes/admin/tarifa.routes'); 
+const reporteRoutes = require('./routes/admin/reporte.routes'); // <-- NUEVA IMPORTACIÓN 
 
 const app = express();
 
@@ -35,6 +36,8 @@ app.use('/api/payment-methods', metodoPagoRoutes); // Cambio de ruta para evitar
 app.use('/api/stations', estacionRoutes); // <-- NUEVO REGISTRO
 app.use('/api/sessions', sesionCargaRoutes); // <-- NUEVO REGISTRO
 app.use('/api/admin/tarifas', tarifaRoutes); // <-- NUEVO REGISTRO DEDICADO
+app.use('/api/admin/reports', reporteRoutes); // <-- NUEVO REGISTRO DEDICADO
+
 
 
 

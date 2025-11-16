@@ -76,6 +76,14 @@ const options = {
       {
         name: "Tarifas",
         description: "Gestión de tarifas de carga - CRUD completo para administración de precios por estación y tipo de carga"
+      },
+      {
+        name: "Reportes",
+        description: "Generación de reportes y estadísticas para el backoffice de franquicias - Análisis de sesiones de carga y rendimiento"
+      },
+      {
+        name: "Estaciones",
+        description: "Gestión y consulta de estaciones de carga - Información para app móvil y backoffice de franquicias"
       }
     ]
   },
