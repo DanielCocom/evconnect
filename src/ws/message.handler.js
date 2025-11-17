@@ -156,7 +156,7 @@ async function handleClientMessage(cargadorId, ws, data) {
 
         // Actualizar estado del cargador a mantenimiento
         await Cargador.update(
-          { estado: 'mantenimiento' },
+          { estado: 'fuera_servicio' },
           { where: { id_cargador: cargadorId } }
         );
 
@@ -232,7 +232,6 @@ async function handleClientMessage(cargadorId, ws, data) {
         estado_cargador: nuevoEstado,
         timestamp: new Date().toISOString()
       })
-
     }
 
     // 2. REENVIAR COMANDO AL CARGADOR

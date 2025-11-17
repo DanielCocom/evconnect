@@ -14,6 +14,15 @@ function registerPublisher(cargadorId, ws) {
   const key = String(cargadorId);
   publishers.set(key, ws);
   ws._publisherFor = key;
+
+
+  // notificar a los cliente
+  this.broadcastToSubscribers(cargadorId, {
+    type: 'estado_cargador',
+    cargadorId: cargadorId,
+    conectado: true,
+    timestamp: new Date().toISOString()
+  });
 }
 
 /**
@@ -22,6 +31,14 @@ function registerPublisher(cargadorId, ws) {
  */
 function removePublisher(cargadorId) {
   publishers.delete(String(cargadorId));
+
+  // NOTIFICAR A LOS CLIENTE LA DESCONECION
+   this.broadcastToSubscribers(cargadorId, {
+            type: 'estado_cargador',
+            cargadorId: cargadorId,
+            conectado: false,
+            timestamp: new Date().toISOString()
+        });
 }
 
 /**

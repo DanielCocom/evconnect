@@ -20,7 +20,7 @@ function initWebSocketServer(server) {
     });
   }, HEARTBEAT_INTERVAL);
 
-  wss.on("connection", async (ws, req) => {
+    wss.on("connection", async (ws, req) => {
     ws.isAlive = true;
     ws.on("pong", () => (ws.isAlive = true));
 
@@ -91,17 +91,23 @@ function initWebSocketServer(server) {
       } else {
         // rol 'client' (app móvil o backoffice)
         pubsub.addSubscriber(cargadorId, ws);
-        
+
+          
+        // Verificar si el publisher (IoT) está conectado
+       
+          const pub = pubsub.publishers.get(String(cargadorId));
+          const publisherConectado = pub && pub.readyState === WebSocket.OPEN;
         // Enviar estado actual del cargador desde la BD inmediatamente
         ws.send(JSON.stringify({ 
           type: "subscribed", 
           cargadorId,
           estado_cargador: cargador.estado,
+          conectado: publisherConectado ? true : false,
           timestamp: new Date().toISOString()
         }));
 
         // Sincronización inicial: Pedir al cargador su estado actual SI está conectado
-        const pub = pubsub.publishers.get(String(cargadorId));
+      
         if (pub && pub.readyState === WebSocket.OPEN) {
           pub.send(JSON.stringify({ type: "sync_request", from: "server" }));
         }
