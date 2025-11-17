@@ -35,9 +35,12 @@ function initWebSocketServer(server) {
         return ws.close(4001, "cargadorId es requerido");
       }
       
-      // 1. Validar que el Cargador exista
+      // 1. Validar que el Cargador exista y obtener información completa
+      let cargador;
       try {
-        const cargador = await Cargador.findByPk(cargadorId, { attributes: ['id_cargador'] });
+        cargador = await Cargador.findByPk(cargadorId, { 
+          attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
+        });
         if (!cargador) {
           return ws.close(4005, "Cargador not found");
         }
@@ -46,18 +49,19 @@ function initWebSocketServer(server) {
         return ws.close(5000, "DB Error");
       }
 
-      // 2. Autenticación (¡Descomentada y obligatoria!)
-      if (!token) {
-        return ws.close(4003, "Token requerido");
-      }
-      
-      let tokenPayload;
-      try {
-        tokenPayload = verifyToken(token); // Usamos tu JWT util
-        ws.userId = tokenPayload.id; // ¡Guardamos el ID del usuario en la conexión!
-        ws.userRole = tokenPayload.role;
-      } catch (err) {
-        return ws.close(4003, "Token invalido");
+      // 2. Autenticación OPCIONAL - Si hay token, validamos y guardamos info
+      if (token) {
+        try {
+          const tokenPayload = verifyToken(token); // Usamos tu JWT util
+          ws.userId = tokenPayload.id; // ¡Guardamos el ID del usuario en la conexión!
+          ws.userRole = tokenPayload.role;
+          ws.authenticated = true;
+        } catch (err) {
+          console.warn("Token inválido, continuando sin autenticación:", err.message);
+          ws.authenticated = false;
+        }
+      } else {
+        ws.authenticated = false;
       }
       
       // 3. Ruteo de Conexión
@@ -68,7 +72,17 @@ function initWebSocketServer(server) {
         // }
 
         pubsub.registerPublisher(cargadorId, ws);
-        ws.send(JSON.stringify({ type: "connected", role: "publisher", cargadorId }));
+        
+        // IMPORTANTE: Al conectarse, enviar el estado actual del cargador desde la BD
+        const estadoActual = {
+          type: "estado_sincronizado",
+          role: "publisher",
+          cargadorId,
+          estado: cargador.estado, // Estado desde la BD
+          tipo_carga: cargador.tipo_carga,
+          timestamp: new Date().toISOString()
+        };
+        ws.send(JSON.stringify(estadoActual));
 
         // Delegamos el manejo de mensajes
         ws.on("message", (data) => messageHandler.handlePublisherMessage(cargadorId, data));
@@ -77,9 +91,16 @@ function initWebSocketServer(server) {
       } else {
         // rol 'client' (app móvil o backoffice)
         pubsub.addSubscriber(cargadorId, ws);
-        ws.send(JSON.stringify({ type: "subscribed", cargadorId }));
+        
+        // Enviar estado actual del cargador desde la BD inmediatamente
+        ws.send(JSON.stringify({ 
+          type: "subscribed", 
+          cargadorId,
+          estado_cargador: cargador.estado,
+          timestamp: new Date().toISOString()
+        }));
 
-        // Sincronización inicial: Pedir al cargador su estado actual
+        // Sincronización inicial: Pedir al cargador su estado actual SI está conectado
         const pub = pubsub.publishers.get(String(cargadorId));
         if (pub && pub.readyState === WebSocket.OPEN) {
           pub.send(JSON.stringify({ type: "sync_request", from: "server" }));
