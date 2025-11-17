@@ -39,6 +39,31 @@ class EstacionController {
             return res.error(err.status || 500, err.message || "Error al obtener estaciones por franquicia");
         }
     }
+
+    /**
+     * GET /api/stations/franchise/:id
+     * Obtiene las estaciones y cargadores de una franquicia específica por ID
+     */
+    static async getStationsByFranchiseId(req, res) {
+        try {
+            const { id } = req.params;
+            
+            if (!id) {
+                return res.error(400, 'ID de franquicia es requerido');
+            }
+
+            const result = await EstacionService.getStationsByFranchiseId(id);
+
+            if (result.length === 0) {
+                return res.ok([], "No se encontraron estaciones para la franquicia especificada.", { code: "NO_STATIONS" });
+            }
+
+            return res.ok(result, `Se encontraron ${result.length} estación(es) para la franquicia ${id}`);
+        } catch (err) {
+            console.error('Error en EstacionController.getStationsByFranchiseId:', err);
+            return res.error(err.status || 500, err.message || "Error al obtener estaciones por ID de franquicia");
+        }
+    }
 }
 
 module.exports = { EstacionController };

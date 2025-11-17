@@ -74,12 +74,72 @@ class EstacionService {
         // Obtener estaciones asociadas a la franquicia, incluyendo cargadores (si existen)
         const estaciones = await Estacion.findAll({
             where: { id_franquicia },
+            include: [{
+                model: Cargador,
+                as: 'Cargadores',
+                where: { estado: { [Op.in]: ['disponible', 'ocupado', 'mantenimiento'] } },
+                required: false
+            }]
         });
 
         // Normalizar respuesta a JSON y renombrar la relación para uso externo
         return estaciones.map(est => {
             const estacionJson = est.toJSON();
+            estacionJson.cargadores = estacionJson.Cargadores || [];
             delete estacionJson.Cargadores;
+            return estacionJson;
+        });
+    }
+
+    /**
+     * Obtiene todas las estaciones y cargadores de una franquicia específica por ID.
+     * @param {number} id_franquicia - ID de la franquicia
+     * @returns {Promise<Array>} Lista de estaciones con sus cargadores
+     */
+    static async getStationsByFranchiseId(id_franquicia) {
+        if (!id_franquicia || isNaN(parseInt(id_franquicia))) {
+            throw new Error('ID de franquicia inválido');
+        }
+
+        const id_franquicia_num = parseInt(id_franquicia);
+
+        // Obtener estaciones asociadas a la franquicia, incluyendo cargadores
+        const estaciones = await Estacion.findAll({
+            where: { id_franquicia: id_franquicia_num },
+            include: [{
+                model: Cargador,
+                as: 'Cargadores',
+                where: { estado: { [Op.in]: ['disponible', 'ocupado', 'mantenimiento', 'fuera_servicio'] } },
+                required: false // Incluir estaciones aunque no tengan cargadores
+            }]
+        });
+
+        if (estaciones.length === 0) {
+            // Verificar si la franquicia existe pero no tiene estaciones
+            const { Franquicia } = require('../models');
+            const franquicia = await Franquicia.findByPk(id_franquicia_num);
+            if (!franquicia) {
+                throw { status: 404, message: 'Franquicia no encontrada' };
+            }
+        }
+
+        // Mapear y consolidar los datos
+        return estaciones.map(estacion => {
+            const estacionJson = estacion.toJSON();
+            
+            // Procesar cargadores
+            estacionJson.cargadores = estacionJson.Cargadores ? estacionJson.Cargadores.map(cargador => ({
+                id_cargador: cargador.id_cargador,
+                numero_serie: cargador.numero_serie,
+                tipo_carga: cargador.tipo_carga,
+                capacidad_kw: cargador.capacidad_kw,
+                estado: cargador.estado,
+                id_estacion: cargador.id_estacion
+            })) : [];
+
+            // Eliminar la relación de Sequelize
+            delete estacionJson.Cargadores;
+
             return estacionJson;
         });
     }

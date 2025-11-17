@@ -385,4 +385,174 @@ router.get('/', authenticateToken,authenticateJWT   ,EstacionController.getAvail
  */
 router.get('/franchise', authenticateToken,authenticateJWT,  EstacionController.getStationsByFranchise);
 
+/**
+ * @swagger
+ * /api/stations/franchise/{id}:
+ *   get:
+ *     summary: Obtener estaciones y cargadores por ID de franquicia
+ *     description: |
+ *       Recupera todas las estaciones y sus cargadores asociados para una franquicia específica
+ *       mediante su ID. Este endpoint permite consultar información detallada de cualquier franquicia,
+ *       útil para administradores generales o reportes.
+ *       
+ *       **Funcionalidades:**
+ *       - Consulta por ID específico de franquicia
+ *       - Información completa de estaciones y cargadores
+ *       - Incluye cargadores en todos los estados (disponible, ocupado, mantenimiento, fuera_servicio)
+ *       - Validación de existencia de franquicia
+ *       
+ *       **Casos de uso:**
+ *       - Dashboard administrativo general
+ *       - Reportes por franquicia
+ *       - Consultas de soporte técnico
+ *       - Análisis de red de estaciones
+ *     tags: [Estaciones]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID único de la franquicia
+ *         example: 2
+ *     responses:
+ *       200:
+ *         description: Estaciones y cargadores de la franquicia obtenidos exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Se encontraron 3 estación(es) para la franquicia 2"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/EstacionFranquicia'
+ *             examples:
+ *               franquicia_con_estaciones:
+ *                 summary: Franquicia con múltiples estaciones
+ *                 value:
+ *                   success: true
+ *                   message: "Se encontraron 3 estación(es) para la franquicia 2"
+ *                   data:
+ *                     - id_estacion: 1
+ *                       id_franquicia: 2
+ *                       nombre_estacion: "Estación Centro Comercial"
+ *                       direccion: "Av. Principal 123, Ciudad"
+ *                       ubicacion_lat: 21.1619
+ *                       ubicacion_lon: -86.8515
+ *                       total_cargadores: 4
+ *                       estado_operacion: "activa"
+ *                       cargadores:
+ *                         - id_cargador: 1
+ *                           numero_serie: "CHG-001-ABC"
+ *                           tipo_carga: "rapida"
+ *                           capacidad_kw: 50.0
+ *                           estado: "disponible"
+ *                           id_estacion: 1
+ *                         - id_cargador: 2
+ *                           numero_serie: "CHG-002-DEF"
+ *                           tipo_carga: "lenta"
+ *                           capacidad_kw: 22.0
+ *                           estado: "ocupado"
+ *                           id_estacion: 1
+ *                         - id_cargador: 3
+ *                           numero_serie: "CHG-003-GHI"
+ *                           tipo_carga: "rapida"
+ *                           capacidad_kw: 75.0
+ *                           estado: "mantenimiento"
+ *                           id_estacion: 1
+ *                         - id_cargador: 4
+ *                           numero_serie: "CHG-004-JKL"
+ *                           tipo_carga: "ultrarapida"
+ *                           capacidad_kw: 150.0
+ *                           estado: "fuera_servicio"
+ *                           id_estacion: 1
+ *                     - id_estacion: 5
+ *                       id_franquicia: 2
+ *                       nombre_estacion: "Estación Plaza Norte"
+ *                       direccion: "Centro Comercial Plaza Norte"
+ *                       ubicacion_lat: 21.2010
+ *                       ubicacion_lon: -86.8720
+ *                       total_cargadores: 2
+ *                       estado_operacion: "activa"
+ *                       cargadores:
+ *                         - id_cargador: 8
+ *                           numero_serie: "CHG-008-XYZ"
+ *                           tipo_carga: "ultrarapida"
+ *                           capacidad_kw: 150.0
+ *                           estado: "disponible"
+ *                           id_estacion: 5
+ *                         - id_cargador: 9
+ *                           numero_serie: "CHG-009-MNO"
+ *                           tipo_carga: "rapida"
+ *                           capacidad_kw: 75.0
+ *                           estado: "disponible"
+ *                           id_estacion: 5
+ *                     - id_estacion: 12
+ *                       id_franquicia: 2
+ *                       nombre_estacion: "Estación Aeropuerto"
+ *                       direccion: "Terminal 2, Aeropuerto Internacional"
+ *                       ubicacion_lat: 21.0365
+ *                       ubicacion_lon: -86.8770
+ *                       total_cargadores: 0
+ *                       estado_operacion: "en_construccion"
+ *                       cargadores: []
+ *               franquicia_sin_estaciones:
+ *                 summary: Franquicia sin estaciones
+ *                 value:
+ *                   success: true
+ *                   message: "No se encontraron estaciones para la franquicia especificada."
+ *                   data: []
+ *       400:
+ *         description: Error de validación - ID de franquicia requerido o inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "ID de franquicia inválido"
+ *       404:
+ *         description: Franquicia no encontrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Franquicia no encontrada"
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Error al obtener estaciones por ID de franquicia"
+ */
+router.get('/franchise/:id', authenticateToken, authenticateJWT, EstacionController.getStationsByFranchiseId);
+
 module.exports = router;
