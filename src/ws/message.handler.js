@@ -77,6 +77,23 @@ async function handlePublisherMessage(cargadorId, data) {
     } else if (msg.type === "confirmacion_comando") {
       // El IoT confirma que recibió y ejecutó un comando
       console.log(`[IoT] Confirmación de comando del cargador ${cargadorId}:`, msg);
+    } else if (msg.type === "sync_response") {
+      // ¡NUEVO! El cargador responde a la solicitud de sincronización con su estado completo
+      console.log(`[IoT] Respuesta de sincronización del cargador ${cargadorId}:`, msg);
+
+      // Si el estado reportado es diferente al de la BD, actualizamos la BD
+      const cargador = await Cargador.findByPk(cargadorId);
+      if (cargador && msg.estado && msg.estado !== cargador.estado) {
+        console.log(`[IoT] Actualizando estado del cargador ${cargadorId} de ${cargador.estado} a ${msg.estado}`);
+        await Cargador.update(
+          { estado: msg.estado },
+          { where: { id_cargador: cargadorId } }
+        );
+      }
+
+      // Enriquecer el mensaje con timestamp si no lo tiene
+      msg.timestamp = msg.timestamp || new Date().toISOString();
+      msg.sincronizado = true;
     }
 
     // 2. REENVIAR A SUSCRIPTORES (Apps y Backoffice)

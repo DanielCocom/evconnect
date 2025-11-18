@@ -92,24 +92,31 @@ function initWebSocketServer(server) {
         // rol 'client' (app móvil o backoffice)
         pubsub.addSubscriber(cargadorId, ws);
 
-          
         // Verificar si el publisher (IoT) está conectado
-       
-          const pub = pubsub.publishers.get(String(cargadorId));
-          const publisherConectado = pub && pub.readyState === WebSocket.OPEN;
-        // Enviar estado actual del cargador desde la BD inmediatamente
+        const pub = pubsub.publishers.get(String(cargadorId));
+        const publisherConectado = pub && pub.readyState === WebSocket.OPEN;
+
+        // Enviar confirmación de suscripción con estado actual del cargador desde la BD
         ws.send(JSON.stringify({ 
           type: "subscribed", 
           cargadorId,
           estado_cargador: cargador.estado,
-          conectado: publisherConectado ? true : false,
+          tipo_carga: cargador.tipo_carga,
+          capacidad_kw: cargador.capacidad_kw,
+          conectado: publisherConectado,
           timestamp: new Date().toISOString()
         }));
 
         // Sincronización inicial: Pedir al cargador su estado actual SI está conectado
-      
-        if (pub && pub.readyState === WebSocket.OPEN) {
-          pub.send(JSON.stringify({ type: "sync_request", from: "server" }));
+        if (publisherConectado) {
+          console.log(`[WS] Enviando sync_request al cargador ${cargadorId} para nuevo subscriber`);
+          pub.send(JSON.stringify({ 
+            type: "sync_request", 
+            from: "server",
+            timestamp: new Date().toISOString()
+          }));
+        } else {
+          console.log(`[WS] Cargador ${cargadorId} no está conectado. Estado desde BD: ${cargador.estado}`);
         }
 
         // Delegamos el manejo de mensajes

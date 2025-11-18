@@ -8,10 +8,11 @@ const responseHandler = require('./middlewares/responseHandler');
 const franquiciaRoutes = require('./routes/franquicia.routes');
 const metodoPagoRoutes = require('./routes/metodoPago.routes');
 const { handleStripeWebhook, verifyStripeWebhook } = require('./middlewares/stripe.webhook');
-const estacionRoutes = require('./routes/estacion.routes'); // <-- NUEVA IMPORTACIÓN
-const sesionCargaRoutes= require('./routes/sesionCarga.routes'); // <-- NUEVA IMPORTACIÓN
+const estacionRoutes = require('./routes/estacion.routes');
+const cargadorRoutes = require('./routes/cargador.routes'); // <-- NUEVA IMPORTACIÓN
+const sesionCargaRoutes= require('./routes/sesionCarga.routes');
 const tarifaRoutes = require('./routes/admin/tarifa.routes'); 
-const reporteRoutes = require('./routes/admin/reporte.routes'); // <-- NUEVA IMPORTACIÓN 
+const reporteRoutes = require('./routes/admin/reporte.routes'); 
 
 const app = express();
 
@@ -33,10 +34,11 @@ app.use("/api/user", userRoutes);
 app.use("/api/admin/", userBackOfficeRouter);
 app.use("/api/franquicia", franquiciaRoutes);
 app.use('/api/payment-methods', metodoPagoRoutes); // Cambio de ruta para evitar conflictos
-app.use('/api/stations', estacionRoutes); // <-- NUEVO REGISTRO
-app.use('/api/sessions', sesionCargaRoutes); // <-- NUEVO REGISTRO
-app.use('/api/admin/tarifas', tarifaRoutes); // <-- NUEVO REGISTRO DEDICADO
-app.use('/api/admin/reports', reporteRoutes); // <-- NUEVO REGISTRO DEDICADO
+app.use('/api/stations', estacionRoutes);
+app.use('/api/stations', cargadorRoutes); // <-- NUEVO REGISTRO (comparte /api/stations con estaciones)
+app.use('/api/sessions', sesionCargaRoutes);
+app.use('/api/admin/tarifas', tarifaRoutes);
+app.use('/api/admin/reports', reporteRoutes);
 
 
 
