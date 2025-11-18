@@ -114,12 +114,48 @@ async function handleClientMessage(cargadorId, ws, data) {
 
     // 1. PROCESAR COMANDO (Lógica de Negocio)
     if (msg.command === "iniciar_carga") {
-      // ¡AQUÍ IRÍA LA LÓGICA DE SERVICIO!
-      // 1. Validar que el usuario puede iniciar
-      // 2. Validar que el cargador está 'disponible'
-      // 3. Crear la 'sesion_carga' en la BD
-      // 4. Hacer retención de pago
-      // 5. Enviar comando
+      // Validar que el cargador está disponible
+      const cargador = await Cargador.findByPk(cargadorId);
+      
+      if (!cargador) {
+        ws.send(JSON.stringify({ 
+          type: "error", 
+          message: "Cargador no encontrado" 
+        }));
+        return;
+      }
+
+      if (cargador.estado !== 'disponible') {
+        ws.send(JSON.stringify({ 
+          type: "error", 
+          message: `Cargador no disponible. Estado actual: ${cargador.estado}` 
+        }));
+        return;
+      }
+
+      // Crear la sesión de carga en la BD
+      const nuevaSesion = await SesionCarga.create({
+        id_usuario: usuarioId,
+        id_cargador: cargadorId,
+        id_estacion: cargador.id_estacion,
+        fecha_inicio: new Date(),
+        energia_consumida_kwh: 0,
+        costo_total: 0,
+        estado_sesion: 'en_progreso'
+      });
+
+      // Actualizar estado del cargador a 'ocupado'
+      await Cargador.update(
+        { estado: 'ocupado' },
+        { where: { id_cargador: cargadorId } }
+      );
+
+      // TODO: Implementar retención de pago con pasarela de pagos
+
+      responsePayload.sesionId = nuevaSesion.id_sesion;
+      responsePayload.message = "Sesión de carga iniciada exitosamente";
+
+      console.log(`[APP] Usuario ${usuarioId} inició sesión ${nuevaSesion.id_sesion} en cargador ${cargadorId}`);
 
       // Por ahora, simulamos
       const sesionId = Math.floor(Math.random() * 10000); // Reemplazar con lógica real
@@ -156,7 +192,7 @@ async function handleClientMessage(cargadorId, ws, data) {
 
         // Actualizar estado del cargador a mantenimiento
         await Cargador.update(
-          { estado: 'fuera_servicio' },
+          { estado: 'fuera_de_servicio' },
           { where: { id_cargador: cargadorId } }
         );
 
@@ -170,13 +206,15 @@ async function handleClientMessage(cargadorId, ws, data) {
         cargadorId: cargadorId,
         timestamp: new Date().toISOString(),
         urgente: true,
+        
         descripcion: "Detener el paso de energía inmediatamente"
       };
 
       // Notificar a todos los subscribers
       pubsub.broadcastToSubscribers(cargadorId, {
-        type: "comando_enviado",
+        type: "estado_cargador",
         command: "detener_energia",
+        estado: 'fuera_de_servicio',
         timestamp: Date.now()
       });
 
@@ -247,11 +285,11 @@ async function handleClientMessage(cargadorId, ws, data) {
       }));
     } else {
       // Confirmar al cliente que el comando fue enviado
-      ws.send(JSON.stringify({
-        type: "comando_enviado",
-        command: msg.command,
-        timestamp: Date.now()
-      }));
+      // ws.send(JSON.stringify({
+      //   type: "comando_enviado",
+      //   command: msg.command,
+      //   timestamp: Date.now()
+      // }));
     }
 
   } catch (err) {
