@@ -37,7 +37,7 @@ db.Franquicia.hasMany(db.UserBackOffice, { foreignKey: 'id_franquicia', onDelete
 db.UserBackOffice.belongsTo(db.Franquicia, { foreignKey: 'id_franquicia' });
 
 // Estacion <-> Cargador (Uno a Muchos)
-db.Estacion.hasMany(db.Cargador, { foreignKey: 'id_estacion', onDelete: 'CASCADE' });
+db.Estacion.hasMany(db.Cargador, { foreignKey: 'id_estacion', as: 'Cargadores', onDelete: 'CASCADE' });
 db.Cargador.belongsTo(db.Estacion, { foreignKey: 'id_estacion' });
 
 // Estacion <-> Tarifa (Uno a Muchos)

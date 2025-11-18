@@ -1,118 +1,81 @@
 const { User } = require("../models");
 const { hashPassword, comparePassword } = require("../utils/hash");
 const { signToken } = require("../utils/jwt");
-const { StripeService } = require("./stripe.service");
+const { StripeService } = require("./stripe/stripe.service");
+const { generateNfcUid } = require("../utils/nfc"); // Nueva importación
 
 class UserService {
-  static async createUser(data) {
-    const { nombre, apellido_paterno, apellido_materno, email, password } = data;
+ static async createUser(data) {
+   const { nombre, apellido_paterno, apellido_materno, email, password } = data;
 
-    // Verificar si email existe
-    const existing = await User.findOne({ where: { email } });
-    if (existing) {
-      const err = new Error("El correo ya está registrado");
-      err.code = "USER_EXISTS";
-      err.status = 409;
-      throw err;
-    }
+ // 1. Verificar si email existe
+ const existing = await User.findOne({ where: { email } });
+ if (existing) {
+ const err = new Error("El correo ya está registrado");
+ err.code = "USER_EXISTS";
+ err.status = 409;
+ throw err;
+ }
 
-    const password_hashed = await hashPassword(password);
+ const password_hashed = await hashPassword(password);
+ // 2. Generar NFC UID (Tarjeta Virtual)
+const nfc_uid = await generateNfcUid(); // Genera un UID único para el usuario
+ 
+    // 3. Crear customer en Stripe ANTES de crear el usuario
+    let stripeCustomerId = null;
+    try {
+      const stripeCustomer = await StripeService.createCustomer({
+        email,
+        name: `${nombre} ${apellido_paterno || ''} ${apellido_materno || ''}`.trim(),
+        metadata: {
+          source: 'evconnect_app'
+        }
+      });
+      stripeCustomerId = stripeCustomer.id;
+    } catch (stripeError) {
+      console.error('Error creando customer en Stripe:', stripeError);
+      // Es un proyecto escolar: si Stripe falla, continuamos pero el usuario no podrá pagar.
+    }
 
-    // 1. Crear usuario en BD
-    const user = await User.create({
-      nombre,
-      apellido_paterno,
-      apellido_materno,
-      email,
-      password_hash: password_hashed,
-      tarjeta_verificada: false // Inicialmente sin tarjeta
-    });
+    // 4. Crear usuario en la DB con todos los datos
+    const user = await User.create({
+      nombre,
+      apellido_paterno,
+      apellido_materno,
+      email,
+      password_hash: password_hashed,
+      stripe_customer_id: stripeCustomerId,
+      nfc_uid: nfc_uid // Guardamos el UID generado
+    });
 
-    // 2. Crear Customer en Stripe
-    try {
-      const stripeCustomer = await StripeService.createCustomer({
-        email: user.email,
-        name: `${user.nombre} ${user.apellido_paterno || ''}`.trim(),
-        metadata: {
-          user_id: user.id_usuario.toString(),
-          source: 'EVCONNECT_APP'
-        }
-      });
+    const userSafe = user.toJSON();
+    delete userSafe.password_hash;
+    return userSafe;
+  }
 
-      // 3. Guardar stripe_customer_id en el usuario
-      await user.update({ stripe_customer_id: stripeCustomer.id });
+  static async authenticateUser(email, password) {
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      const err = new Error("Credenciales inválidas");
+      err.code = "INVALID_CREDENTIALS";
+      err.status = 401;
+      throw err;
+    }
 
-      const userSafe = user.toJSON();
-      delete userSafe.password_hash;
+    const ok = await comparePassword(password, user.password_hash);
+    if (!ok) {
+      const err = new Error("Credenciales inválidas");
+      err.code = "INVALID_CREDENTIALS";
+      err.status = 401;
+      throw err;
+    }
 
-      return {
-        ...userSafe,
-        stripe_customer_id: stripeCustomer.id
-      };
-    } catch (stripeError) {
-      // Si falla Stripe, eliminar usuario de BD
-      await user.destroy();
-      console.error('Error creando customer en Stripe:', stripeError);
-      
-      const err = new Error('Error al configurar cuenta de pagos');
-      err.status = 500;
-      throw err;
-    }
-  }
+    const token = signToken({}, String(user.id_usuario));
+    const userSafe = user.toJSON();
+    delete userSafe.password_hash;
 
-  static async authenticateUser(email, password) {
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      const err = new Error("Credenciales inválidas");
-      err.code = "INVALID_CREDENTIALS";
-      err.status = 401;
-      throw err;
-    }
-
-    const ok = await comparePassword(password, user.password_hash);
-    if (!ok) {
-      const err = new Error("Credenciales inválidas");
-      err.code = "INVALID_CREDENTIALS";
-      err.status = 401;
-      throw err;
-    }
-
-    const token = signToken({}, String(user.id_usuario));
-    const userSafe = user.toJSON();
-    delete userSafe.password_hash;
-
-    return { token, user: userSafe };
-  }
-
-  /**
-   * Actualizar NFC del usuario (opcional)
-   */
-  static async updateNFC(userId, nfcUid) {
-    const user = await User.findByPk(userId);
-    if (!user) {
-      const err = new Error('Usuario no encontrado');
-      err.status = 404;
-      throw err;
-    }
-
-    // Verificar que el NFC no esté en uso
-    const existing = await User.findOne({ 
-      where: { nfc_uid: nfcUid } 
-    });
-
-    if (existing && existing.id_usuario !== userId) {
-      const err = new Error('Este NFC ya está vinculado a otra cuenta');
-      err.status = 409;
-      throw err;
-    }
-
-    await user.update({ nfc_uid: nfcUid });
-
-    const userSafe = user.toJSON();
-    delete userSafe.password_hash;
-
-    return userSafe;
-  }
+    return { token, user: userSafe };
+  }
 }
 
 module.exports = { UserService };

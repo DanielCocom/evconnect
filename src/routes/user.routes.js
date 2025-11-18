@@ -31,6 +31,14 @@ const router = Router();
  *           type: number
  *           format: decimal
  *           description: Saldo virtual del usuario
+ *         stripe_customer_id:
+ *           type: string
+ *           description: ID del Customer en Stripe (generado automáticamente al registrarse)
+ *           example: "cus_P8xYz123ABC"
+ *         tarjeta_verificada:
+ *           type: boolean
+ *           description: Indica si el usuario ha vinculado al menos una tarjeta
+ *           example: false
  *         fecha_registro:
  *           type: string
  *           format: date-time
@@ -96,6 +104,20 @@ const router = Router();
  * /api/user/register:
  *   post:
  *     summary: Registrar nuevo usuario
+ *     description: |
+ *       Crea un nuevo usuario en la plataforma y automáticamente genera
+ *       un Customer en Stripe para gestión de pagos futura.
+ *       
+ *       **Proceso automático:**
+ *       - Se validan los datos del usuario
+ *       - Se crea el usuario en la base de datos
+ *       - Se crea un Customer en Stripe con los mismos datos
+ *       - Se guarda el `stripe_customer_id` en el usuario
+ *       
+ *       **Validaciones:**
+ *       - Email único (no duplicado)
+ *       - Password mínimo 8 caracteres
+ *       - Campos requeridos: nombre, email, password
  *     tags: [Usuarios]
  *     requestBody:
  *       required: true
@@ -105,7 +127,7 @@ const router = Router();
  *             $ref: '#/components/schemas/UserRegister'
  *     responses:
  *       201:
- *         description: Usuario creado exitosamente
+ *         description: Usuario creado exitosamente con Customer de Stripe
  *         content:
  *           application/json:
  *             schema:
@@ -115,18 +137,35 @@ const router = Router();
  *                   properties:
  *                     data:
  *                       $ref: '#/components/schemas/User'
+ *             example:
+ *               success: true
+ *               message: "Usuario creado correctamente"
+ *               data:
+ *                 id_usuario: 5
+ *                 nombre: "Juan"
+ *                 apellido_paterno: "Pérez"
+ *                 email: "juan@example.com"
+ *                 stripe_customer_id: "cus_P8xYz123ABC"
+ *                 tarjeta_verificada: false
+ *                 saldo_virtual: 0
  *       422:
  *         description: Error de validación
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               success: false
+ *               message: "La contraseña debe tener al menos 8 caracteres"
  *       409:
  *         description: El correo ya está registrado
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               success: false
+ *               message: "El correo ya está registrado"
  */
 router.post("/register", UserController.register);
 
