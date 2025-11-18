@@ -77,7 +77,6 @@ class EstacionService {
             include: [{
                 model: Cargador,
                 as: 'Cargadores',
-                where: { estado: { [Op.in]: ['disponible', 'ocupado', 'mantenimiento'] } },
                 required: false
             }]
         });
