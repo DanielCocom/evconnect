@@ -21,8 +21,8 @@ async function getCargadoresPorEstacionId(estacionId) {
 
     // Obtener cargadores asociados
     const cargadores = await Cargador.findAll({
-        where: { estacionId: id },
-        order: [['id', 'ASC']], 
+        where: { id_estacion: id },
+        order: [['id_cargador', 'ASC']], 
     });
 
     return cargadores;
