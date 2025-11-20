@@ -2,8 +2,8 @@ const { Op } = require('sequelize');
 const { SesionCarga, Cargador, Tarifa, User } = require('../models');
 const { MetodoPagoService } = require('./metodoPago.service');
 const { StripeService } = require('./stripe/stripe.service');
-// Asumo que tienes un servicio para manejar la comunicación con IoT (que aún no hemos escrito)
-// const { IotService } = require('./iot.service');
+const { IotService } = require('./ws/iot.service');
+const pubsub = require('../ws/pubsub');
 
 class SesionCargaService {
     /**
@@ -21,6 +21,14 @@ class SesionCargaService {
             throw { status: 404, message: 'Usuario no encontrado' };
         }
         
+        // Verifica si el cargador está conectado al WebSocket
+        const isChargerConnected = pubsub.isSubscriberConnected(chargerId);
+        if (!isChargerConnected) {
+            throw { status: 503, message: `El cargador #${chargerId} no está conectado al sistema. No se puede iniciar la sesión.` };
+        }
+
+        
+
         // Verifica si el usuario tiene una tarjeta predeterminada
         const defaultPaymentMethod = await MetodoPagoService.getDefaultPaymentMethod(userId);
         // defaultPaymentMethod.token_referencia es el ID del PaymentMethod de Stripe (pm_xxxx)
@@ -98,36 +106,58 @@ class SesionCargaService {
             metodo_pago_utilizado: defaultPaymentMethod.id_pago,
             estado: 'activa', // Cambiamos a 'activa' si la retención fue exitosa
             monto_estimado: costoTotal, // Monto fijo retenido
-            id_pago_transaccion: paymentIntent.id // ID del PaymentIntent de Stripe
+            id_pago_transaccion: paymentIntent.id, // ID del PaymentIntent de Stripe
+            duracion_estimada_min: durationMinutes,
+            tiempo_transcurrido_min: 0,
+            monto_por_minuto: tarifa.costo_tiempo_min
         });
         
-        // --- 5. ENVIAR COMANDO A IOT (Asumimos IotService existe) ---
-        
-        /*
+        // --- 5. ENVIAR COMANDO A IOT ---
         try {
-            await IotService.sendCommand(cargador.id_cargador, 'START', { duration: durationMinutes });
+            await IotService.sendCommand(cargador.id_cargador, 'START', { 
+                duration: durationMinutes,
+                sesionId: sesion.id_sesion,
+                userId: userId
+            });
+            console.log(`[SesionCarga] Comando START enviado al cargador ${chargerId}`);
         } catch (iotError) {
             // Si el IoT no responde, debemos revertir la transacción y liberar el cargador
+            console.error('[SesionCarga] Error al enviar comando START al IoT:', iotError);
             await cargador.update({ estado: 'disponible' });
             await sesion.update({ estado: 'fallida', fecha_fin: new Date() });
             await StripeService.cancelPaymentIntent(paymentIntent.id); // Cancelar la retención
             throw { status: 503, message: 'Cargador no responde. Sesión cancelada.', errors: iotError };
         }
-        */
+
+        // --- 6. Notificar al usuario móvil vía WebSocket ---
+        const mensajeInicio = {
+            type: 'sesion_iniciada',
+            id_sesion: sesion.id_sesion,
+            id_cargador: cargador.id_cargador,
+            duracion_estimada_min: durationMinutes,
+            monto_retenido: costoTotal,
+            monto_por_minuto: tarifa.costo_tiempo_min,
+            fecha_inicio: sesion.fecha_inicio,
+            timestamp: new Date().toISOString()
+        };
+
+        pubsub.broadcastToSubscribers(cargador.id_cargador, mensajeInicio);
 
         // Devolvemos la información esencial para el frontend
         return {
             id_sesion: sesion.id_sesion,
             id_cargador: cargador.id_cargador,
             monto_retenido: costoTotal,
-            duracion_limite: durationMinutes,
-            fecha_inicio: sesion.fecha_inicio
+            monto_por_minuto: tarifa.costo_tiempo_min,
+            duracion_estimada_min: durationMinutes,
+            fecha_inicio: sesion.fecha_inicio,
+            mensaje: 'Sesión iniciada. Conecta tu vehículo al cargador.'
         };
     }
 
     /**
-     * Paso Final: Finaliza la sesión de carga (manual o automática) y cobra el monto fijo.
-     * NOTA: En este modelo de COBRO POR TIEMPO FIJO, el monto final siempre es igual al monto estimado.
+     * Paso Final: Finaliza la sesión de carga manualmente (usuario detiene antes del tiempo límite).
+     * Cobra SOLO por el tiempo transcurrido, no por el tiempo estimado completo.
      * @param {number} sessionId - ID de la sesión de carga.
      * @param {number} userId - ID del usuario.
      * @returns {Object} Resumen de la sesión finalizada.
@@ -142,44 +172,85 @@ class SesionCargaService {
             throw { status: 404, message: 'Sesión activa no encontrada para este usuario.' };
         }
 
-        const montoFijo = sesion.monto_estimado;
+        // --- 1. Calcular el tiempo transcurrido y el monto proporcional ---
+        const ahora = new Date();
+        const tiempoTranscurridoMs = ahora.getTime() - sesion.fecha_inicio.getTime();
+        const tiempoTranscurridoMin = Math.ceil(tiempoTranscurridoMs / 60000); // Redondear hacia arriba
+        
+        // Cobrar SOLO por los minutos transcurridos
+        const montoFinal = (tiempoTranscurridoMin * sesion.monto_por_minuto).toFixed(2);
+        const montoFinalNum = parseFloat(montoFinal);
+
         const paymentIntentId = sesion.id_pago_transaccion;
 
-        // --- 1. ENVIAR COMANDO A IOT (Detener Carga) ---
-        // Asumimos que esta llamada se hace aquí si fue por finalización manual del usuario
-        // Si fue automática (por tiempo), el IoT/Webhook haría esta notificación.
-        
-        /*
+        // --- 2. ENVIAR COMANDO STOP A IOT ---
         try {
-            await IotService.sendCommand(sesion.id_cargador, 'STOP');
+            await IotService.sendCommand(sesion.id_cargador, 'STOP', {
+                sesionId: sesion.id_sesion,
+                razon: 'detencion_manual'
+            });
+            console.log(`[SesionCarga] Comando STOP enviado al cargador ${sesion.id_cargador}`);
         } catch (iotError) {
             // Loguear el error, pero el cobro debe continuar
-            console.error('Error al enviar comando STOP a IoT:', iotError);
+            console.error('[SesionCarga] Error al enviar comando STOP a IoT:', iotError);
         }
-        */
 
-        // --- 2. Capturar Pago (Cobro Fijo) ---
-        // Como el cobro es fijo por tiempo preseleccionado, capturamos el monto retenido.
-        const capture = await StripeService.capturePaymentIntent(paymentIntentId, montoFijo);
+        // --- 3. Capturar Pago (Cobro Proporcional) ---
+        let capture;
+        try {
+            capture = await StripeService.capturePaymentIntent(paymentIntentId, montoFinalNum);
+            console.log(`[SesionCarga] Pago capturado: $${montoFinalNum} MXN (${tiempoTranscurridoMin} minutos)`);
+        } catch (stripeError) {
+            console.error('[SesionCarga] Error al capturar pago:', stripeError);
+            // Marcar sesión como fallida si no se pudo cobrar
+            await sesion.update({
+                estado: 'fallida',
+                fecha_fin: ahora,
+                tiempo_transcurrido_min: tiempoTranscurridoMin
+            });
+            throw { status: 500, message: 'Error al procesar el pago', details: stripeError.message };
+        }
 
-        // --- 3. Actualizar DB y liberar Cargador ---
+        // --- 4. Actualizar DB y liberar Cargador ---
         await sesion.Cargador.update({ estado: 'disponible' });
         
         await sesion.update({
             estado: 'finalizada',
-            fecha_fin: new Date(),
-            // En este modelo, monto_final es igual a monto_estimado
-            monto_final: montoFijo, 
-            // La energía consumida se actualizaría a través del webhook de IoT con la última lectura.
-            // energía_consumida_kwh: (última_lectura)
+            fecha_fin: ahora,
+            monto_final: montoFinalNum,
+            tiempo_transcurrido_min: tiempoTranscurridoMin
         });
+
+        // --- 5. Notificar al usuario vía WebSocket ---
+        const mensajeFinal = {
+            type: 'sesion_finalizada',
+            razon: 'detencion_manual',
+            id_sesion: sesion.id_sesion,
+            id_cargador: sesion.id_cargador,
+            tiempo_transcurrido_min: tiempoTranscurridoMin,
+            duracion_estimada_min: sesion.duracion_estimada_min,
+            monto_cobrado: montoFinalNum,
+            monto_retenido: sesion.monto_estimado,
+            ahorro: (sesion.monto_estimado - montoFinalNum).toFixed(2),
+            energia_consumida_kwh: sesion.energia_consumida_kwh,
+            fecha_inicio: sesion.fecha_inicio,
+            fecha_fin: ahora,
+            stripe_status: capture.status,
+            timestamp: ahora.toISOString()
+        };
+
+        pubsub.broadcastToSubscribers(sesion.id_cargador, mensajeFinal);
 
         return {
             id_sesion: sesion.id_sesion,
             id_cargador: sesion.id_cargador,
-            duracion: (sesion.fecha_fin.getTime() - sesion.fecha_inicio.getTime()) / 60000,
-            monto_cobrado: montoFijo,
-            stripe_status: capture.status
+            tiempo_transcurrido_min: tiempoTranscurridoMin,
+            duracion_estimada_min: sesion.duracion_estimada_min,
+            monto_cobrado: montoFinalNum,
+            monto_retenido: sesion.monto_estimado,
+            ahorro: (sesion.monto_estimado - montoFinalNum).toFixed(2),
+            stripe_status: capture.status,
+            mensaje: `Cobro completado por ${tiempoTranscurridoMin} minutos: $${montoFinalNum} MXN`
         };
     }
     
@@ -213,6 +284,60 @@ class SesionCargaService {
                 tipo_carga: sesion.Cargador.tipo_carga,
                 capacidad_kw: sesion.Cargador.capacidad_kw,
             }
+        };
+    }
+
+    /**
+     * Obtener información de tarifa para un cargador específico.
+     * Este método es llamado cuando el usuario escanea el NFC del cargador.
+     * @param {number} chargerId - ID del cargador.
+     * @returns {Object} Información del cargador y su tarifa vigente.
+     */
+    static async getChargerRateInfo(chargerId) {
+        // Buscar el cargador
+        const cargador = await Cargador.findByPk(chargerId);
+        
+        if (!cargador) {
+            throw { status: 404, message: 'Cargador no encontrado' };
+        }
+
+        if (cargador.estado !== 'disponible') {
+            throw { 
+                status: 409, 
+                message: `El cargador #${chargerId} no está disponible actualmente.`,
+                estado_actual: cargador.estado
+            };
+        }
+
+        // Buscar la tarifa vigente para este cargador
+        const tarifa = await Tarifa.findOne({
+            where: {
+                id_estacion: cargador.id_estacion,
+                tipo_carga: cargador.tipo_carga,
+                costo_tiempo_min: { [Op.not]: null },
+                fecha_inicio_vigencia: { [Op.lte]: new Date() },
+                [Op.or]: [
+                    { fecha_fin_vigencia: { [Op.gte]: new Date() } },
+                    { fecha_fin_vigencia: null }
+                ]
+            }
+        });
+
+        if (!tarifa) {
+            throw { 
+                status: 400, 
+                message: `No hay una tarifa vigente para este cargador (${cargador.tipo_carga}).`
+            };
+        }
+
+        return {
+            id_cargador: cargador.id_cargador,
+            tipo_carga: cargador.tipo_carga,
+            capacidad_kw: cargador.capacidad_kw,
+            estado: cargador.estado,
+            id_tarifa: tarifa.id_tarifa,
+            costo_por_minuto: tarifa.costo_tiempo_min,
+            mensaje: `Cargador disponible. Tarifa: $${tarifa.costo_tiempo_min} MXN por minuto.`
         };
     }
 }

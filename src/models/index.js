@@ -24,8 +24,8 @@ db.User.hasMany(db.MetodoPago, { foreignKey: 'id_usuario', onDelete: 'CASCADE' }
 db.MetodoPago.belongsTo(db.User, { foreignKey: 'id_usuario' });
 
 // Usuario <-> SesionCarga (Uno a Muchos)
-db.User.hasMany(db.SesionCarga, { foreignKey: 'id_usuario', onDelete: 'CASCADE' });
-db.SesionCarga.belongsTo(db.User, { foreignKey: 'id_usuario' });
+db.User.hasMany(db.SesionCarga, { foreignKey: 'id_usuario', as: 'Sesiones', onDelete: 'CASCADE' });
+db.SesionCarga.belongsTo(db.User, { foreignKey: 'id_usuario', as: 'Usuario' });
 
 // --- 2. Relaciones de Franquicia (Jerarquía) ---
 // Franquicia <-> Estacion (Uno a Muchos)
