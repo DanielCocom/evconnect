@@ -22,7 +22,7 @@ class SesionCargaService {
         }
         
         // Verifica si el cargador está conectado al WebSocket
-        const isChargerConnected = pubsub.isSubscriberConnected(chargerId);
+        const isChargerConnected = pubsub.isPublisherConnected(chargerId);
         if (!isChargerConnected) {
             throw { status: 503, message: `El cargador #${chargerId} no está conectado al sistema. No se puede iniciar la sesión.` };
         }
@@ -70,7 +70,7 @@ class SesionCargaService {
         
         // --- 3. Cálculo del Costo Fijo y Retención de Pago ---
         // El monto total es COSTO_MINUTO * DURACIÓN_MINUTOS
-        const costoTotal = tarifa.costo_tiempo_min * durationMinutes;
+        const costoTotal = (tarifa.costo_tiempo_min * durationMinutes).toFixed(2);
 
         if (costoTotal <= 0) {
             throw { status: 400, message: 'El costo calculado debe ser positivo.' };
@@ -83,10 +83,10 @@ class SesionCargaService {
             paymentMethodId: defaultPaymentMethod.token_referencia,
             description: `Retención por sesión de ${durationMinutes} min en Cargador #${chargerId}`,
             metadata: {
-                user_id: userId,
-                charger_id: chargerId,
-                duration_minutes: durationMinutes,
-                type: 'AUTHORIZATION'
+            user_id: userId,
+            charger_id: chargerId,
+            duration_minutes: durationMinutes,
+            type: 'AUTHORIZATION'
             }
         });
         
@@ -95,27 +95,25 @@ class SesionCargaService {
             throw { status: 402, message: 'El pago no pudo ser autorizado. Verifique sus fondos o tarjeta.' };
         }
 
-        // --- 4. Crear la Sesión de Carga en estado 'activa' ---
-        // Marcamos el cargador como 'ocupado' inmediatamente
-        await cargador.update({ estado: 'ocupado' });
-
-        const sesion = await SesionCarga.create({
+const sesion = await SesionCarga.create({
             id_usuario: userId,
             id_cargador: chargerId,
             id_tarifa: tarifa.id_tarifa,
             metodo_pago_utilizado: defaultPaymentMethod.id_pago,
-            estado: 'activa', // Cambiamos a 'activa' si la retención fue exitosa
-            monto_estimado: costoTotal, // Monto fijo retenido
-            id_pago_transaccion: paymentIntent.id, // ID del PaymentIntent de Stripe
+            estado: 'activa',
+            monto_estimado: costoTotal,
+            id_pago_transaccion: paymentIntent.id,
             duracion_estimada_min: durationMinutes,
             tiempo_transcurrido_min: 0,
-            monto_por_minuto: tarifa.costo_tiempo_min
+            monto_por_minuto: tarifa.costo_tiempo_min,
+            // 👇 AGREGA ESTA LÍNEA IMPORTANTE 👇
+            fecha_inicio: new Date() 
         });
         
         // --- 5. ENVIAR COMANDO A IOT ---
         try {
             await IotService.sendCommand(cargador.id_cargador, 'START', { 
-                duration: durationMinutes,
+                duraciion_minutos: durationMinutes,
                 sesionId: sesion.id_sesion,
                 userId: userId
             });
@@ -142,6 +140,9 @@ class SesionCargaService {
         };
 
         pubsub.broadcastToSubscribers(cargador.id_cargador, mensajeInicio);
+        // --- 4. Crear la Sesión de Carga en estado 'activa' ---
+        // Marcamos el cargador como 'ocupado' inmediatamente
+        await cargador.update({ estado: 'ocupado' });
 
         // Devolvemos la información esencial para el frontend
         return {
@@ -153,6 +154,8 @@ class SesionCargaService {
             fecha_inicio: sesion.fecha_inicio,
             mensaje: 'Sesión iniciada. Conecta tu vehículo al cargador.'
         };
+
+        
     }
 
     /**

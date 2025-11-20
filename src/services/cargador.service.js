@@ -95,4 +95,4 @@ async function getTarifaByCargadorId(cargadorId) {
 module.exports = {
     getCargadoresPorEstacionId,
     getTarifaByCargadorId,
-};
+} ;

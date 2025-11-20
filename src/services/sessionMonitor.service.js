@@ -22,10 +22,10 @@ class SessionMonitorService {
         }
 
         console.log('[SessionMonitor] Iniciando monitoreo de sesiones activas...');
-        
+
         // Ejecutar inmediatamente
         this.checkActiveSessions();
-        
+
         // Luego cada minuto
         this.intervalId = setInterval(() => {
             this.checkActiveSessions();
@@ -49,7 +49,7 @@ class SessionMonitorService {
     static async checkActiveSessions() {
         try {
             const sesionesActivas = await SesionCarga.findAll({
-                where: { 
+                where: {
                     estado: 'activa'
                 },
                 include: [
@@ -79,10 +79,17 @@ class SessionMonitorService {
     static async processSingleSession(sesion) {
         try {
             const ahora = new Date();
-            const tiempoTranscurridoMs = ahora.getTime() - sesion.fecha_inicio.getTime();
+          
+
+            // La resta de tiempos será 0 si la fecha de inicio es futura, o un valor positivo si ya inició
+            const tiempoTranscurridoMs = Math.max(0, ahora.getTime() - sesion.fecha_inicio.getTime());
+
+            // Esto asegura que el valor nunca sea negativo:
             const tiempoTranscurridoMin = Math.floor(tiempoTranscurridoMs / 60000);
+
+            // Y esta línea ahora funcionará correctamente:
             const tiempoRestanteMin = Math.max(0, sesion.duracion_estimada_min - tiempoTranscurridoMin);
-            
+
             // Calcular monto acumulado (por minutos completos)
             const montoAcumulado = (tiempoTranscurridoMin * sesion.monto_por_minuto).toFixed(2);
 
@@ -192,7 +199,7 @@ class SessionMonitorService {
 
         } catch (error) {
             console.error(`[SessionMonitor] Error al finalizar sesión automáticamente ${sesion.id_sesion}:`, error);
-            
+
             // Intentar marcar la sesión como fallida si hubo un error crítico
             try {
                 await sesion.update({
