@@ -97,6 +97,10 @@ const options = {
       {
         name: "Estaciones",
         description: "Gestión y consulta de estaciones de carga - Información para app móvil y backoffice de franquicias"
+      },
+       {
+        name: "Cargadores",
+        description: "Gestión y consulta de los cargadores de una estacion para el usuario movil"
       }
     ]
   },

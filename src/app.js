@@ -12,6 +12,7 @@ const estacionRoutes = require('./routes/estacion.routes'); // <-- NUEVA IMPORTA
 const sesionCargaRoutes= require('./routes/sesionCarga.routes'); // <-- NUEVA IMPORTACIÓN
 const tarifaRoutes = require('./routes/admin/tarifa.routes'); 
 const reporteRoutes = require('./routes/admin/reporte.routes'); // <-- NUEVA IMPORTACIÓN 
+const cargadoresRouters = require('./routes/cargador.routes')
 
 const app = express();
 
@@ -37,6 +38,8 @@ app.use('/api/stations', estacionRoutes); // <-- NUEVO REGISTRO
 app.use('/api/sessions', sesionCargaRoutes); // <-- NUEVO REGISTRO
 app.use('/api/admin/tarifas', tarifaRoutes); // <-- NUEVO REGISTRO DEDICADO
 app.use('/api/admin/reports', reporteRoutes); // <-- NUEVO REGISTRO DEDICADO
+app.use('/api/cargadores', cargadoresRouters); // <-- NUEVO REGISTRO DEDICADO
+
 
 
 
