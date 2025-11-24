@@ -6,11 +6,13 @@ const { IotService } = require('./ws/iot.service');
 
 /**
  * Servicio para monitorear sesiones de carga activas y enviar actualizaciones en tiempo real.
- * Este servicio se ejecuta cada minuto para todas las sesiones activas.
+ * NOTA: Este monitor está ajustado para tareas de TIMEOUT y sincronización de datos de baja frecuencia.
+ * El monitoreo real (kWh, V, A) debería venir del IoT vía WebSocket.
  */
 class SessionMonitorService {
     static intervalId = null;
-    static MONITOR_INTERVAL = 60000; // 60 segundos
+    // CORRECCIÓN 1: Reducir la frecuencia de monitoreo de 60s a 10s para una mejor percepción de "tiempo real"
+    static MONITOR_INTERVAL = 2000; // 10 segundos 
 
     /**
      * Inicia el monitoreo de sesiones activas
@@ -21,12 +23,12 @@ class SessionMonitorService {
             return;
         }
 
-        console.log('[SessionMonitor] Iniciando monitoreo de sesiones activas...');
+        console.log(`[SessionMonitor] Iniciando monitoreo de sesiones activas cada ${this.MONITOR_INTERVAL / 1000} segundos...`);
 
         // Ejecutar inmediatamente
         this.checkActiveSessions();
 
-        // Luego cada minuto
+        // Luego cada 10 segundos
         this.intervalId = setInterval(() => {
             this.checkActiveSessions();
         }, this.MONITOR_INTERVAL);
@@ -78,30 +80,32 @@ class SessionMonitorService {
      */
     static async processSingleSession(sesion) {
         try {
-            const ahora = new Date();
-          
+        const ahora = new Date();
+        
+        // CORRECCIÓN CRÍTICA: Convertir la fecha de inicio a milisegundos UTC
+        // .getTime() devuelve el timestamp en milisegundos, que es el valor UTC puro.
+        const inicioSesionTimeMs = new Date(sesion.fecha_inicio).getTime();
 
-            // La resta de tiempos será 0 si la fecha de inicio es futura, o un valor positivo si ya inició
-            const tiempoTranscurridoMs = Math.max(0, ahora.getTime() - sesion.fecha_inicio.getTime());
+        // Ahora la resta es entre dos valores UTC (milisegundos) consistentes
+        const tiempoTranscurridoMs = Math.max(0, ahora.getTime() - inicioSesionTimeMs);
+        const tiempoTranscurridoSeg = Math.floor(tiempoTranscurridoMs / 1000);
 
-            // Esto asegura que el valor nunca sea negativo:
-            const tiempoTranscurridoMin = Math.floor(tiempoTranscurridoMs / 60000);
+            const montoPorMinutoNum = parseFloat(sesion.monto_por_minuto);
+            const montoPorSegundo = montoPorMinutoNum / 60;
 
-            // Y esta línea ahora funcionará correctamente:
-            const tiempoRestanteMin = Math.max(0, sesion.duracion_estimada_min - tiempoTranscurridoMin);
+            // Calcular monto acumulado por SEGUNDOS (para fines de monitoreo)
+            const montoAcumulado = (tiempoTranscurridoSeg * montoPorSegundo).toFixed(2);
+            const montoAcumuladoNum = parseFloat(montoAcumulado);
 
-            // Calcular monto acumulado (por minutos completos)
-            const montoAcumulado = (tiempoTranscurridoMin * sesion.monto_por_minuto).toFixed(2);
+            // Verificar si el tiempo se ha agotado (usando la duración original en minutos)
+            const duracionEstimadaSeg = sesion.duracion_estimada_min * 60;
+            const tiempoRestanteSeg = Math.max(0, duracionEstimadaSeg - tiempoTranscurridoSeg);
 
-            // Actualizar tiempo transcurrido en la base de datos
-            await sesion.update({
-                tiempo_transcurrido_min: tiempoTranscurridoMin
-            });
-
-            // Verificar si el tiempo se ha agotado
-            if (tiempoRestanteMin === 0 && tiempoTranscurridoMin >= sesion.duracion_estimada_min) {
+            // Verificación de Timeout (Tarea crítica)
+            if (tiempoRestanteSeg === 0 && tiempoTranscurridoSeg >= duracionEstimadaSeg) {
                 console.log(`[SessionMonitor] Sesión ${sesion.id_sesion} ha alcanzado el tiempo límite. Finalizando...`);
-                await this.finalizarSesionAutomatica(sesion, tiempoTranscurridoMin, montoAcumulado);
+                // Enviar segundos y monto calculado para la finalización automática
+                await this.finalizarSesionAutomatica(sesion, tiempoTranscurridoSeg, montoAcumulado);
                 return;
             }
 
@@ -110,19 +114,21 @@ class SessionMonitorService {
                 type: 'carga_en_progreso',
                 id_sesion: sesion.id_sesion,
                 id_cargador: sesion.id_cargador,
-                tiempo_transcurrido_min: tiempoTranscurridoMin,
-                tiempo_restante_min: tiempoRestanteMin,
+                // CORRECCIÓN: Se envía tiempo en SEGUNDOS y como NÚMERO
+                tiempo_transcurrido_seg: tiempoTranscurridoSeg,
+                tiempo_restante_seg: tiempoRestanteSeg,
                 duracion_estimada_min: sesion.duracion_estimada_min,
-                monto_por_minuto: sesion.monto_por_minuto,
-                monto_acumulado: parseFloat(montoAcumulado),
-                porcentaje_completado: Math.min(100, Math.round((tiempoTranscurridoMin / sesion.duracion_estimada_min) * 100)),
+                // CORRECCIÓN: Se envía como NÚMERO
+                monto_por_minuto: montoPorMinutoNum,
+                monto_acumulado: montoAcumuladoNum,
+                // CORRECCIÓN: Se elimina 'porcentaje_completado'
                 timestamp: ahora.toISOString()
             };
 
             // Enviar a todos los suscriptores del cargador (usuario móvil principalmente)
             pubsub.broadcastToSubscribers(sesion.id_cargador, mensaje);
 
-            console.log(`[SessionMonitor] Actualización enviada - Sesión ${sesion.id_sesion}: ${tiempoTranscurridoMin}/${sesion.duracion_estimada_min} min, $${montoAcumulado} MXN`);
+            console.log(`[SessionMonitor] Actualización enviada - Sesión ${sesion.id_sesion}: ${tiempoTranscurridoSeg} seg, $${montoAcumulado} MXN`);
 
         } catch (error) {
             console.error(`[SessionMonitor] Error procesando sesión ${sesion.id_sesion}:`, error);
@@ -132,12 +138,13 @@ class SessionMonitorService {
     /**
      * Finaliza una sesión automáticamente cuando se agota el tiempo
      * @param {Object} sesion - Sesión de carga
-     * @param {number} tiempoTranscurrido - Tiempo transcurrido en minutos
-     * @param {string} montoFinal - Monto final a cobrar
+     * @param {number} tiempoTranscurridoSeg - Tiempo transcurrido en SEGUNDOS
+     * @param {string} montoFinal - Monto final a cobrar (string from toFixed)
      */
-    static async finalizarSesionAutomatica(sesion, tiempoTranscurrido, montoFinal) {
+    static async finalizarSesionAutomatica(sesion, tiempoTranscurridoSeg, montoFinal) {
         try {
             const montoFinalNum = parseFloat(montoFinal);
+            const tiempoTranscurridoMin = Math.ceil(tiempoTranscurridoSeg / 60); // Para guardar en DB
 
             // 1. Capturar el pago en Stripe
             let captureResult;
@@ -169,12 +176,12 @@ class SessionMonitorService {
                 { where: { id_cargador: sesion.id_cargador } }
             );
 
-            // 4. Actualizar la sesión como finalizada
+            // 4. Actualizar la sesión como finalizada (tiempo en minutos para la DB)
             await sesion.update({
                 estado: 'finalizada',
                 fecha_fin: new Date(),
                 monto_final: montoFinalNum,
-                tiempo_transcurrido_min: tiempoTranscurrido
+                tiempo_transcurrido_min: tiempoTranscurridoMin
             });
 
             // 5. Notificar al usuario móvil que la sesión ha finalizado
@@ -183,10 +190,10 @@ class SessionMonitorService {
                 razon: 'tiempo_completado',
                 id_sesion: sesion.id_sesion,
                 id_cargador: sesion.id_cargador,
-                tiempo_transcurrido_min: tiempoTranscurrido,
+                tiempo_transcurrido_min: tiempoTranscurridoMin,
                 duracion_estimada_min: sesion.duracion_estimada_min,
                 monto_cobrado: montoFinalNum,
-                energia_consumida_kwh: sesion.energia_consumida_kwh,
+                energia_consumida_kwh: sesion.energia_consumida_kwh ? parseFloat(sesion.energia_consumida_kwh) : 0,
                 fecha_inicio: sesion.fecha_inicio,
                 fecha_fin: new Date(),
                 stripe_status: captureResult ? captureResult.status : 'error',
