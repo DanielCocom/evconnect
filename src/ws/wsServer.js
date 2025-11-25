@@ -103,7 +103,7 @@ function initWebSocketServer(server) {
           estado_cargador: cargador.estado,
           tipo_carga: cargador.tipo_carga,
           capacidad_kw: cargador.capacidad_kw,
-          conectado: publisherConectado,
+          conectado: publisherConectado ?? false,
           timestamp: new Date().toISOString()
         }));
 

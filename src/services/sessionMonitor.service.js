@@ -12,7 +12,7 @@ const { IotService } = require('./ws/iot.service');
 class SessionMonitorService {
     static intervalId = null;
     // CORRECCIÓN 1: Reducir la frecuencia de monitoreo de 60s a 10s para una mejor percepción de "tiempo real"
-    static MONITOR_INTERVAL = 2000; // 10 segundos 
+    static MONITOR_INTERVAL = 1000; // 1 segundo 
 
     /**
      * Inicia el monitoreo de sesiones activas
