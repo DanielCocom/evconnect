@@ -135,7 +135,7 @@ class SesionCargaService {
             duracion_estimada_min: durationMinutes,
             tiempo_transcurrido_min: 0,
             monto_por_minuto: costoMinutoNum, // Usamos la versión numérica
-            fecha_inicio: new Date().toLocaleDateString()
+            fecha_inicio: new Date()
         });
 
 
