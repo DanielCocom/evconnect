@@ -1,4 +1,4 @@
-const { getCargadoresPorEstacionId, getCargadoresDisponiblesPorTipo } = require('../services/cargador.service');
+const { getCargadoresPorEstacionId, getTarifaByCargadorId, getCargadoresDisponiblesPorTipo } = require('../services/cargador.service');
 
 class CargadorController {
     /**
@@ -14,7 +14,6 @@ class CargadorController {
             return next(error);
         }
     }
-
     /**
      * Maneja petición para obtener los cargadores disponibles de una estación por tipo de carga.
      * Espera que el id de la estación venga en req.params.estacionId o req.params.id.
@@ -31,6 +30,34 @@ class CargadorController {
             }
             
             return res.ok(cargadores, 'Cargadores disponibles obtenidos exitosamente');
+        } catch (error) {
+            return next(error);
+        }
+    }
+
+    /**
+     * Obtiene la tarifa vigente para un cargador específico.
+     * Espera que el id_cargador venga como query parameter.
+     * GET /api/stations/tariffs?id_cargador=123
+     */
+    async obtenerTarifaPorCargador(req, res, next) {
+        try {
+            const { id_cargador } = req.query;
+
+            if (!id_cargador) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro id_cargador es requerido'
+                });
+            }
+
+            const resultado = await getTarifaByCargadorId(id_cargador);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Tarifa obtenida correctamente',
+                data: resultado
+            });
         } catch (error) {
             return next(error);
         }

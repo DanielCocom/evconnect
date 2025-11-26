@@ -42,6 +42,20 @@ module.exports = (sequelize, DataTypes) => {
     },
     id_pago_transaccion: {
       type: DataTypes.STRING(100)
+    },
+    // Nuevos campos para seguimiento en tiempo real
+    duracion_estimada_min: {
+      type: DataTypes.INTEGER,
+      comment: 'Duración en minutos que el usuario solicitó inicialmente'
+    },
+    tiempo_transcurrido_min: {
+      type: DataTypes.DECIMAL(10, 2),
+      defaultValue: 0,
+      comment: 'Tiempo real transcurrido en minutos'
+    },
+    monto_por_minuto: {
+      type: DataTypes.DECIMAL(10, 2),
+      comment: 'Tarifa por minuto aplicada en esta sesión'
     }
   }, {
     tableName: 'sesion_carga',

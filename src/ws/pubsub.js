@@ -26,6 +26,17 @@ function registerPublisher(cargadorId, ws) {
 }
 
 /**
+ * Verifica si un publisher (cargador) está conectado
+ * @param {string} cargadorId 
+ * @returns {boolean}
+ */
+function isPublisherConnected(cargadorId) {
+  const key = String(cargadorId);
+  const pubWs = publishers.get(key);
+  return pubWs && pubWs.readyState === WebSocket.OPEN;
+}
+
+/**
  * Elimina un publisher
  * @param {string} cargadorId 
  */
@@ -40,6 +51,8 @@ function removePublisher(cargadorId) {
             timestamp: new Date().toISOString()
         });
 }
+
+
 
 /**
  * Añade un suscriptor (app móvil, backoffice)
@@ -112,4 +125,5 @@ module.exports = {
   broadcastToSubscribers,
   sendToPublisher,
   publishers, // Lo exportamos para el sync_request
+  isPublisherConnected
 };

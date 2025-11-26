@@ -34,11 +34,16 @@ async function handlePublisherMessage(cargadorId, data) {
         estado_rele: msg.estado_rele,
       });
 
-      // Actualizar la sesión en tiempo real
-      await SesionCarga.update(
-        { energia_consumida_kwh: (msg.energia_acumulada_wh / 1000) },
-        { where: { id_sesion: msg.sesionId } }
-      );
+      // Actualizar la sesión en tiempo real con la energía consumida
+      if (msg.sesionId) {
+        await SesionCarga.update(
+          { energia_consumida_kwh: (msg.energia_acumulada_wh / 1000) },
+          { where: { id_sesion: msg.sesionId } }
+        );
+        
+        // Agregar información de sesión al mensaje para los suscriptores
+        msg.energia_kwh = (msg.energia_acumulada_wh / 1000).toFixed(3);
+      }
 
     } else if (msg.type === "alerta") {
       // Obtenemos el id_estacion del cargador
@@ -77,6 +82,48 @@ async function handlePublisherMessage(cargadorId, data) {
     } else if (msg.type === "confirmacion_comando") {
       // El IoT confirma que recibió y ejecutó un comando
       console.log(`[IoT] Confirmación de comando del cargador ${cargadorId}:`, msg);
+      
+      // Si es confirmación de START, podríamos actualizar la sesión o enviar notificación
+      if (msg.comando === 'START' && msg.sesionId) {
+        console.log(`[IoT] Carga iniciada confirmada para sesión ${msg.sesionId}`);
+        
+        // Notificar a los suscriptores que el IoT confirmó el inicio
+        pubsub.broadcastToSubscribers(cargadorId, {
+          type: 'comando_confirmado',
+          comando: 'START',
+          sesionId: msg.sesionId,
+          estado: 'cargando',
+          timestamp: new Date().toISOString()
+        });
+      } else if (msg.comando === 'STOP' && msg.sesionId) {
+        console.log(`[IoT] Detención confirmada para sesión ${msg.sesionId}`);
+        
+        // Notificar a los suscriptores que el IoT confirmó la detención
+        pubsub.broadcastToSubscribers(cargadorId, {
+          type: 'comando_confirmado',
+          comando: 'STOP',
+          sesionId: msg.sesionId,
+          estado: 'detenido',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else if (msg.type === "sync_response") {
+      // ¡NUEVO! El cargador responde a la solicitud de sincronización con su estado completo
+      console.log(`[IoT] Respuesta de sincronización del cargador ${cargadorId}:`, msg);
+
+      // Si el estado reportado es diferente al de la BD, actualizamos la BD
+      const cargador = await Cargador.findByPk(cargadorId);
+      if (cargador && msg.estado && msg.estado !== cargador.estado) {
+        console.log(`[IoT] Actualizando estado del cargador ${cargadorId} de ${cargador.estado} a ${msg.estado}`);
+        await Cargador.update(
+          { estado: msg.estado },
+          { where: { id_cargador: cargadorId } }
+        );
+      }
+
+      // Enriquecer el mensaje con timestamp si no lo tiene
+      msg.timestamp = msg.timestamp || new Date().toISOString();
+      msg.sincronizado = true;
     }
 
     // 2. REENVIAR A SUSCRIPTORES (Apps y Backoffice)

@@ -1,4 +1,4 @@
-const pubsub = require('../ws/pubsub'); // Ajusta la ruta si es necesario
+const pubsub = require('../../ws/pubsub'); // Ajusta la ruta si es necesario
 
 class IotService {
     

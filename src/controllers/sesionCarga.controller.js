@@ -75,6 +75,27 @@ class SesionCargaController {
              return res.error(err.status || 500, err.message || 'Error al obtener estado de sesión');
         }
     }
+
+    /**
+     * GET /api/sessions/tarifa/:id_cargador
+     * Obtiene la tarifa vigente de un cargador específico.
+     * Este endpoint es llamado cuando el usuario móvil escanea el NFC del cargador.
+     */
+    static async getChargerRate(req, res) {
+        try {
+            const chargerId = Number(req.params.id_cargador);
+
+            if (isNaN(chargerId)) {
+                return res.error(422, 'ID de cargador inválido');
+            }
+
+            const rateInfo = await SesionCargaService.getChargerRateInfo(chargerId);
+            return res.ok(rateInfo, 'Información de tarifa del cargador');
+        } catch (err) {
+            console.error('Error en SesionCargaController.getChargerRate:', err);
+            return res.error(err.status || 500, err.message || 'Error al obtener la tarifa');
+        }
+    }
 }
 
 module.exports = { SesionCargaController };
