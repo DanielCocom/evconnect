@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, where } = require('sequelize');
 const { SesionCarga, Cargador, Estacion, User } = require('../models'); 
 
 class ReporteService {
@@ -102,6 +102,42 @@ class ReporteService {
         }
 
         return session;
+    }
+
+
+    /**
+     * Obtiene todas las sesiones de carga de un usuario específico.
+     * @param {number} id_usuario - ID del usuario.
+     * @returns {Promise<Array<Object>>}
+     */
+    static async getUserSessionById(id_usuario) {
+        const userSessions = await SesionCarga.findAll({
+            where: { id_usuario: id_usuario },
+            include: [
+                {
+                    model: Cargador,
+                    attributes: ['id_cargador', 'tipo_carga', 'estado'],
+                    as: 'Cargador',
+                    include: [
+                        {
+                            model: Estacion,
+                            attributes: ['nombre_estacion', 'direccion'],
+                            as: 'Estacion'
+                        }
+                    ]
+                },
+                {
+                    model: User,
+                    as: "Usuario"
+                   
+                }
+            ],
+            attributes: ['id_sesion', 'id_cargador', 'fecha_inicio', 'fecha_fin', 
+                'estado', 'energia_consumida_kwh', 'monto_final', 'metodo_pago_utilizado'],
+            order: [['fecha_fin', 'DESC']]
+        });
+
+        return userSessions;
     }
 
 

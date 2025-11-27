@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { UserController } = require("../controllers/user.controller");
-const { authenticateToken } = require("../middlewares/authJwt");
+const { authenticateToken, authenticateJWT } = require("../middlewares/authJwt");
 
 const router = Router();
 
@@ -248,5 +248,145 @@ router.post("/login", UserController.login);
  *               $ref: '#/components/schemas/ApiResponse'
  */
 router.get("/me", authenticateToken, UserController.profile);
+
+/**
+ * @swagger
+ * /api/user/sessions:
+ *   get:
+ *     summary: Obtener historial de sesiones de carga del usuario autenticado
+ *     description: |
+ *       Retorna todas las sesiones de carga realizadas por el usuario autenticado,
+ *       incluyendo información del cargador, estación y detalles de la sesión.
+ *       
+ *       **Información incluida:**
+ *       - Datos de la sesión (fechas, estado, energía consumida, monto)
+ *       - Información del cargador utilizado
+ *       - Datos de la estación donde se realizó la carga
+ *       - Datos básicos del usuario
+ *       
+ *       **Orden:** Las sesiones se ordenan de más reciente a más antigua.
+ *     tags: [Usuarios]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de sesiones de carga del usuario
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id_sesion:
+ *                             type: integer
+ *                             description: ID único de la sesión
+ *                           id_cargador:
+ *                             type: integer
+ *                             description: ID del cargador utilizado
+ *                           fecha_inicio:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Fecha y hora de inicio de la sesión
+ *                           fecha_fin:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Fecha y hora de fin de la sesión
+ *                           estado:
+ *                             type: string
+ *                             description: Estado de la sesión
+ *                             enum: [pendiente, en_progreso, completada, cancelada, fallida]
+ *                           energia_consumida_kwh:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Energía consumida en kWh
+ *                           monto_final:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Monto total cobrado
+ *                           metodo_pago_utilizado:
+ *                             type: string
+ *                             description: Método de pago usado
+ *                           Cargador:
+ *                             type: object
+ *                             properties:
+ *                               id_cargador:
+ *                                 type: integer
+ *                               tipo_carga:
+ *                                 type: string
+ *                                 description: Tipo de carga (rápida, normal)
+ *                               estado:
+ *                                 type: string
+ *                                 description: Estado actual del cargador
+ *                               Estacion:
+ *                                 type: object
+ *                                 properties:
+ *                                   nombre_estacion:
+ *                                     type: string
+ *                                     description: Nombre de la estación
+ *                                   direccion:
+ *                                     type: string
+ *                                     description: Dirección de la estación
+ *                           User:
+ *                             type: object
+ *                             properties:
+ *                               id_usuario:
+ *                                 type: integer
+ *                               nombre:
+ *                                 type: string
+ *                               apellido_materno:
+ *                                 type: string
+ *                               apellido_paterno:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *             example:
+ *               success: true
+ *               message: "Sesiones de carga del usuario"
+ *               data:
+ *                 - id_sesion: 123
+ *                   id_cargador: 45
+ *                   fecha_inicio: "2024-01-15T10:30:00Z"
+ *                   fecha_fin: "2024-01-15T12:00:00Z"
+ *                   estado: "completada"
+ *                   energia_consumida_kwh: 25.5
+ *                   monto_final: 150.75
+ *                   metodo_pago_utilizado: "tarjeta"
+ *                   Cargador:
+ *                     id_cargador: 45
+ *                     tipo_carga: "rápida"
+ *                     estado: "disponible"
+ *                     Estacion:
+ *                       nombre_estacion: "Estación Centro"
+ *                       direccion: "Av. Principal 123"
+ *                   User:
+ *                     id_usuario: 5
+ *                     nombre: "Juan"
+ *                     apellido_paterno: "Pérez"
+ *                     apellido_materno: "García"
+ *                     email: "juan@example.com"
+ *       401:
+ *         description: Token no provisto o inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               success: false
+ *               message: "Token no válido o expirado"
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ */
+
+router.get("/sessions", authenticateJWT, UserController.getUserSessions)
 
 module.exports = router;

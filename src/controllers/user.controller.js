@@ -19,6 +19,7 @@ class UserController {
     } catch (err) {
       return res.error(err.status || 500, err.message || "Error interno", err.errors || null);
     }
+
   }
 
   static async login(req, res, next) {
@@ -55,6 +56,20 @@ class UserController {
       return res.error(err.status || 500, err.message || "Error interno", err.errors || null);
     }
   }
+
+  static async getUserSessions(req, res, next) {
+  try {
+    const userId = req.userId;
+    
+    const sessions = await require('../services/reporte.service').ReporteService.getUserSessionById(userId);
+    
+    return res.ok(sessions, "Sesiones de carga del usuario");
+  } catch (err) {
+    return res.error(err.status || 500, err.message || "Error interno", err.errors || null);
+  }
 }
+}
+
+
 
 module.exports = { UserController };

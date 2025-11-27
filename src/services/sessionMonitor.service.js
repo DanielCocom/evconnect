@@ -18,11 +18,9 @@ class SessionMonitorService {
             })
         );
     }
-
     static nowMexico() {
         return this.toMexico(new Date());
     }
-
     // ======================================================
     // 🔥 INICIO MONITOR
     // ======================================================
