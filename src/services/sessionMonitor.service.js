@@ -6,7 +6,7 @@ const { IotService } = require('./ws/iot.service');
 
 class SessionMonitorService {
     static intervalId = null;
-    static MONITOR_INTERVAL = 1000; // 2 segundos
+    static MONITOR_INTERVAL = 5000; // 5 segundos
 
     // ======================================================
     // 🔥 HELPER NATIVO: CONVERTIR UTC ↔ MÉXICO
@@ -147,7 +147,7 @@ class SessionMonitorService {
             }
 
             try {
-                await IotService.sendCommand(sesion.id_cargador, 'STOP', {
+                await IotService.sendCommand(sesion.id_cargador, false, {
                     sesionId: sesion.id_sesion,
                     razon: 'tiempo_completado'
                 });
