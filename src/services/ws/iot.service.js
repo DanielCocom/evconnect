@@ -19,10 +19,10 @@ class IotService {
      * Envía un comando de control (START/STOP/RESET) a un cargador específico.
      * Llamado por el servicio de Mantenimiento (WEB-7)
      */
-    static sendCommand(id_cargador, command, payload = {}) {
+    static sendCommand(id_cargador, isCharging, payload = {}) {
         
         const message = {
-            command: command,
+            cargando: isCharging,
             cargadorId: id_cargador,
             timestamp: new Date().toISOString(),
             ...payload
@@ -34,7 +34,7 @@ class IotService {
             throw { status: 404, message: `El cargador ${id_cargador} no está actualmente conectado (WebSocket).` };
         }
 
-        console.log(`[IoT] Comando '${command}' enviado a Cargador ${id_cargador}.`);
+       
         return true;
     }
 }
