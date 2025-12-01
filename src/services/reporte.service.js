@@ -56,6 +56,7 @@ class ReporteService {
                 },
                 {
                     model: User,
+                    as:'Usuario',
                     attributes: ['id_usuario', 'nombre', 'apellido_materno','apellido_paterno', 'email'] // Solo datos relevantes del cliente
                 }
             ],
