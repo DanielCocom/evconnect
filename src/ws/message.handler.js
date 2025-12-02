@@ -6,11 +6,12 @@ const pubsub = require("./pubsub");
 const { LecturaIot, AlertaEvento, SesionCarga, Cargador } = require("../models");
 
 /**
- * Maneja los mensajes que llegan DESDE EL PUBLISHER (cargador)
- * @param {string} cargadorId 
+ * Maneja los mensajes que llegan DESDE EL PUBLISHER (IoT de estación)
+ * @param {string} estacionId 
+ * @param {WebSocket} ws 
  * @param {Buffer} data 
  */
-async function handlePublisherMessage(cargadorId, data) {
+async function handlePublisherMessage(estacionId, ws, data) {
   let msg;
   try {
     msg = JSON.parse(data.toString());
@@ -18,8 +19,17 @@ async function handlePublisherMessage(cargadorId, data) {
     console.error("Invalid JSON from publisher:", err);
     return;
   }
+  
+  // El mensaje DEBE incluir el cargadorId para saber a qué cargador pertenece
+  const cargadorId = msg.cargadorId || msg.id_cargador;
+  if (!cargadorId) {
+    console.error("Mensaje del publisher sin cargadorId:", msg);
+    return;
+  }
 
   try {
+    console.log(`[Publisher] Mensaje de IoT estación ${estacionId} para cargador ${cargadorId}: ${msg.type}`);
+    
     // 1. GUARDAR EN BASE DE DATOS
     if (msg.type === "telemetria") {
       await LecturaIot.create({
@@ -136,9 +146,10 @@ async function handlePublisherMessage(cargadorId, data) {
       msg.sincronizado = true;
     }
 
-    // 2. REENVIAR A SUSCRIPTORES (Apps y Backoffice)
+    // 2. REENVIAR A SUSCRIPTORES del cargador específico (Apps y Backoffice)
     pubsub.broadcastToSubscribers(cargadorId, {
       from: "publisher",
+      estacionId: parseInt(estacionId),
       payload: msg,
       timestamp: Date.now(),
     });

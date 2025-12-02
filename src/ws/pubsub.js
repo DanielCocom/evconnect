@@ -1,56 +1,70 @@
 // src/ws/pubsub.js
 const WebSocket = require("ws");
 
-// Usamos cargadorId como el "tópico"
-const publishers = new Map(); // cargadorId -> ws (publisher)
+// Publishers ahora se identifican por estacionId (un IoT por estación)
+const publishers = new Map(); // estacionId -> ws (publisher IoT)
 const subscribers = new Map(); // cargadorId -> Set<ws> (subscribers)
 const monitors = new Map(); // estacionId -> Set<ws> (monitors)
 
 /**
- * Registra un publisher (cargador físico)
- * @param {string} cargadorId 
+ * Registra un publisher (IoT de estación)
+ * @param {string} estacionId 
  * @param {WebSocket} ws 
+ * @param {Array} cargadorIds - IDs de todos los cargadores de la estación
  */
-function registerPublisher(cargadorId, ws) {
-  const key = String(cargadorId);
+function registerPublisher(estacionId, ws, cargadorIds = []) {
+  const key = String(estacionId);
   publishers.set(key, ws);
-  ws._publisherFor = key;
+  ws._publisherForStation = key;
+  ws._stationChargers = cargadorIds;
 
+  console.log(`[Publisher] IoT conectado para estación ${estacionId} con ${cargadorIds.length} cargadores`);
 
-  // notificar a los cliente
-  this.broadcastToSubscribers(cargadorId, {
-    type: 'estado_cargador',
-    cargadorId: cargadorId,
-    conectado: true,
-    timestamp: new Date().toISOString()
+  // Notificar a los clientes de cada cargador que el IoT está conectado
+  cargadorIds.forEach(cargadorId => {
+    broadcastToSubscribers(cargadorId, {
+      type: 'estado_cargador',
+      cargadorId: cargadorId,
+      conectado: true,
+      timestamp: new Date().toISOString()
+    });
   });
 }
 
 /**
- * Verifica si un publisher (cargador) está conectado
+ * Verifica si un publisher (IoT) está conectado para un cargador específico
  * @param {string} cargadorId 
  * @returns {boolean}
  */
 function isPublisherConnected(cargadorId) {
-  const key = String(cargadorId);
-  const pubWs = publishers.get(key);
-  return pubWs && pubWs.readyState === WebSocket.OPEN;
+  // Buscar en todos los publishers si alguno tiene este cargador
+  for (const [estacionId, ws] of publishers.entries()) {
+    if (ws._stationChargers && ws._stationChargers.includes(parseInt(cargadorId))) {
+      return ws.readyState === WebSocket.OPEN;
+    }
+  }
+  return false;
 }
 
 /**
- * Elimina un publisher
- * @param {string} cargadorId 
+ * Elimina un publisher (IoT de estación)
+ * @param {string} estacionId 
+ * @param {Array} cargadorIds - IDs de cargadores de la estación
  */
-function removePublisher(cargadorId) {
-  publishers.delete(String(cargadorId));
+function removePublisher(estacionId, cargadorIds = []) {
+  publishers.delete(String(estacionId));
 
-  // NOTIFICAR A LOS CLIENTE LA DESCONECION
-   this.broadcastToSubscribers(cargadorId, {
-            type: 'estado_cargador',
-            cargadorId: cargadorId,
-            conectado: false,
-            timestamp: new Date().toISOString()
-        });
+  console.log(`[Publisher] IoT desconectado de estación ${estacionId}`);
+
+  // Notificar a todos los clientes de los cargadores que el IoT se desconectó
+  cargadorIds.forEach(cargadorId => {
+    broadcastToSubscribers(cargadorId, {
+      type: 'estado_cargador',
+      cargadorId: cargadorId,
+      conectado: false,
+      timestamp: new Date().toISOString()
+    });
+  });
 }
 
 
@@ -104,16 +118,25 @@ function broadcastToSubscribers(cargadorId, message) {
 }
 
 /**
- * Envía un comando específico AL PUBLISHER (cargador)
+ * Envía un comando específico AL PUBLISHER (IoT) para un cargador
  * @param {string} cargadorId 
  * @param {object} message 
  */
 function sendToPublisher(cargadorId, message) {
-  const key = String(cargadorId);
-  const pubWs = publishers.get(key);
-  if (pubWs && pubWs.readyState === WebSocket.OPEN) {
-    pubWs.send(JSON.stringify(message));
-    return true;
+  // Buscar el publisher (IoT) que maneja este cargador
+  for (const [estacionId, ws] of publishers.entries()) {
+    if (ws._stationChargers && ws._stationChargers.includes(parseInt(cargadorId))) {
+      if (ws.readyState === WebSocket.OPEN) {
+        // Agregar el cargadorId al mensaje para que el IoT sepa a cuál enviar
+        const messageWithTarget = {
+          ...message,
+          target_cargador_id: parseInt(cargadorId)
+        };
+        ws.send(JSON.stringify(messageWithTarget));
+        console.log(`[Publisher] Comando enviado a IoT de estación ${estacionId} para cargador ${cargadorId}`);
+        return true;
+      }
+    }
   }
   return false; // Publisher no conectado
 }

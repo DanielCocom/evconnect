@@ -28,24 +28,32 @@ function initWebSocketServer(server) {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const token = url.searchParams.get("token");
       const role = (url.searchParams.get("role") || "client").toLowerCase();
-      // ¡CAMBIO CLAVE: Usamos cargadorId!
-      const cargadorId = url.searchParams.get("cargadorId");
-      const estacionId = url.searchParams.get("estacionId"); // NUEVO para rol monitor
+      const cargadorId = url.searchParams.get("cargadorId"); // Para client
+      const estacionId = url.searchParams.get("estacionId"); // Para publisher y monitor
 
       // Validación según rol
-      if (role === "monitor") {
+      if (role === "publisher") {
+        if (!estacionId) {
+          return ws.close(4001, "estacionId es requerido para rol publisher");
+        }
+      } else if (role === "monitor") {
         if (!estacionId) {
           return ws.close(4001, "estacionId es requerido para rol monitor");
         }
       } else {
+        // role === "client"
         if (!cargadorId) {
-          return ws.close(4001, "cargadorId es requerido");
+          return ws.close(4001, "cargadorId es requerido para rol client");
         }
       }
       
-      // 1. Validar que el Cargador exista (solo para roles publisher y client)
+      // 1. Validar según el rol
       let cargador;
-      if (role !== "monitor") {
+      let estacion;
+      let cargadoresEstacion = [];
+      
+      if (role === "client") {
+        // Validar que el cargador existe
         try {
           cargador = await Cargador.findByPk(cargadorId, { 
             attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
@@ -55,6 +63,27 @@ function initWebSocketServer(server) {
           }
         } catch (err) {
           console.error("Error checking Cargador:", err);
+          return ws.close(5000, "DB Error");
+        }
+      } else if (role === "publisher") {
+        // Validar que la estación existe y obtener sus cargadores
+        try {
+          const { Estacion } = require("../models");
+          estacion = await Estacion.findByPk(estacionId);
+          if (!estacion) {
+            return ws.close(4005, "Estación not found");
+          }
+          
+          cargadoresEstacion = await Cargador.findAll({
+            where: { id_estacion: estacionId },
+            attributes: ['id_cargador', 'estado', 'tipo_carga']
+          });
+          
+          if (cargadoresEstacion.length === 0) {
+            return ws.close(4006, "No hay cargadores en esta estación");
+          }
+        } catch (err) {
+          console.error("Error checking Estacion:", err);
           return ws.close(5000, "DB Error");
         }
       }
@@ -81,22 +110,29 @@ function initWebSocketServer(server) {
         //   return ws.close(4001, "No autorizado para ser publisher");
         // }
 
-        pubsub.registerPublisher(cargadorId, ws);
+        const cargadorIds = cargadoresEstacion.map(c => c.id_cargador);
+        pubsub.registerPublisher(estacionId, ws, cargadorIds);
         
-        // IMPORTANTE: Al conectarse, enviar el estado actual del cargador desde la BD
+        // Enviar el estado actual de todos los cargadores de la estación
         const estadoActual = {
           type: "estado_sincronizado",
           role: "publisher",
-          cargadorId,
-          estado: cargador.estado, // Estado desde la BD
-          tipo_carga: cargador.tipo_carga,
+          estacionId: parseInt(estacionId),
+          cargadores: cargadoresEstacion.map(c => ({
+            id_cargador: c.id_cargador,
+            estado: c.estado,
+            tipo_carga: c.tipo_carga
+          })),
           timestamp: new Date().toISOString()
         };
         ws.send(JSON.stringify(estadoActual));
 
-        // Delegamos el manejo de mensajes
-        ws.on("message", (data) => messageHandler.handlePublisherMessage(cargadorId, data));
-        ws.on("close", () => pubsub.removePublisher(cargadorId));
+        // Delegamos el manejo de mensajes del publisher (IoT)
+        ws.on("message", (data) => messageHandler.handlePublisherMessage(estacionId, ws, data));
+        ws.on("close", () => {
+          const chargerIds = ws._stationChargers || [];
+          pubsub.removePublisher(estacionId, chargerIds);
+        });
 
       } else if (role === "monitor") {
         // NUEVO: Rol Monitor para dashboard de estación
@@ -153,9 +189,17 @@ function initWebSocketServer(server) {
         // rol 'client' (app móvil o backoffice)
         pubsub.addSubscriber(cargadorId, ws);
 
-        // Verificar si el publisher (IoT) está conectado
-        const pub = pubsub.publishers.get(String(cargadorId));
-        const publisherConectado = pub && pub.readyState === WebSocket.OPEN;
+        // Verificar si el publisher (IoT) está conectado buscando la estación que tiene este cargador
+        let pub = null;
+        let publisherConectado = false;
+        
+        for (const [estId, pubWs] of pubsub.publishers.entries()) {
+          if (pubWs._stationChargers && pubWs._stationChargers.includes(parseInt(cargadorId))) {
+            pub = pubWs;
+            publisherConectado = pubWs.readyState === WebSocket.OPEN;
+            break;
+          }
+        }
 
         // Enviar confirmación de suscripción con estado actual del cargador desde la BD
         ws.send(JSON.stringify({ 
@@ -168,16 +212,17 @@ function initWebSocketServer(server) {
           timestamp: new Date().toISOString()
         }));
 
-        // Sincronización inicial: Pedir al cargador su estado actual SI está conectado
+        // Sincronización inicial: Pedir al IoT el estado del cargador específico
         if (publisherConectado) {
-          console.log(`[WS] Enviando sync_request al cargador ${cargadorId} para nuevo subscriber`);
+          console.log(`[WS] Enviando sync_request para cargador ${cargadorId}`);
           pub.send(JSON.stringify({ 
-            type: "sync_request", 
+            type: "sync_request",
+            target_cargador_id: parseInt(cargadorId),
             from: "server",
             timestamp: new Date().toISOString()
           }));
         } else {
-          console.log(`[WS] Cargador ${cargadorId} no está conectado. Estado desde BD: ${cargador.estado}`);
+          console.log(`[WS] IoT no conectado para cargador ${cargadorId}. Estado desde BD: ${cargador.estado}`);
         }
 
         // Delegamos el manejo de mensajes
