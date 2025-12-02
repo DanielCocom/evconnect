@@ -6,8 +6,7 @@ const { IotService } = require('./ws/iot.service');
 
 class SessionMonitorService {
     static intervalId = null;
-    static MONITOR_INTERVAL = 2000; // 2 segundos
-
+    static MONITOR_INTERVAL = 5000; // 5 segundos
     // ======================================================
     // 🔥 HELPER NATIVO: CONVERTIR UTC ↔ MÉXICO
     // ======================================================
@@ -181,6 +180,14 @@ class SessionMonitorService {
             };
 
             pubsub.broadcastToSubscribers(sesion.id_cargador, mensajeFinal);
+
+            // Notificar estado completo de la estación a monitores
+            const cargador = await Cargador.findByPk(sesion.id_cargador, {
+                attributes: ['id_estacion']
+            });
+            if (cargador && cargador.id_estacion) {
+                await pubsub.notifyStationStatus(cargador.id_estacion);
+            }
 
             console.log(`[SessionMonitor] Sesión ${sesion.id_sesion} finalizada automáticamente.`);
 

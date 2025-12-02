@@ -68,12 +68,22 @@ async function handlePublisherMessage(cargadorId, data) {
       }
 
       // Actualizar el estado en la base de datos para persistencia
+      const cargadorActual = await Cargador.findByPk(cargadorId, {
+        attributes: ['id_estacion', 'estado']
+      });
+      const estadoAnterior = cargadorActual ? cargadorActual.estado : null;
+
       await Cargador.update(
         { estado: msg.estado },
         { where: { id_cargador: cargadorId } }
       );
 
       console.log(`[IoT] Cargador ${cargadorId} cambió a estado: ${msg.estado}`);
+
+      // Notificar estado completo de la estación a monitores
+      if (cargadorActual && cargadorActual.id_estacion) {
+        await pubsub.notifyStationStatus(cargadorActual.id_estacion);
+      }
 
       // Preparar mensaje enriquecido para subscribers
       msg.timestamp = msg.timestamp || new Date().toISOString();
@@ -345,7 +355,37 @@ async function handleClientMessage(cargadorId, ws, data) {
   }
 }
 
+/**
+ * Maneja los mensajes que llegan DESDE EL MONITOR (dashboard de estación)
+ * @param {string} estacionId 
+ * @param {WebSocket} ws 
+ * @param {Buffer} data 
+ */
+async function handleMonitorMessage(estacionId, ws, data) {
+  let msg;
+  try {
+    msg = JSON.parse(data.toString());
+  } catch (err) {
+    console.error("Invalid JSON from monitor:", err);
+    return;
+  }
+
+  try {
+    if (msg.command === "solicitar_resumen") {
+      // Devolver resumen actualizado de la estación usando la función helper
+      await pubsub.notifyStationStatus(estacionId);
+    }
+  } catch (err) {
+    console.error("Error processing monitor message:", err);
+    ws.send(JSON.stringify({ 
+      type: "error", 
+      message: "Error interno procesando solicitud" 
+    }));
+  }
+}
+
 module.exports = {
   handlePublisherMessage,
   handleClientMessage,
+  handleMonitorMessage
 };

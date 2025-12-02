@@ -29,24 +29,34 @@ function initWebSocketServer(server) {
       const token = url.searchParams.get("token");
       const role = (url.searchParams.get("role") || "client").toLowerCase();
       // ¡CAMBIO CLAVE: Usamos cargadorId!
-      const cargadorId = url.searchParams.get("cargadorId"); 
+      const cargadorId = url.searchParams.get("cargadorId");
+      const estacionId = url.searchParams.get("estacionId"); // NUEVO para rol monitor
 
-      if (!cargadorId) {
-        return ws.close(4001, "cargadorId es requerido");
+      // Validación según rol
+      if (role === "monitor") {
+        if (!estacionId) {
+          return ws.close(4001, "estacionId es requerido para rol monitor");
+        }
+      } else {
+        if (!cargadorId) {
+          return ws.close(4001, "cargadorId es requerido");
+        }
       }
       
-      // 1. Validar que el Cargador exista y obtener información completa
+      // 1. Validar que el Cargador exista (solo para roles publisher y client)
       let cargador;
-      try {
-        cargador = await Cargador.findByPk(cargadorId, { 
-          attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
-        });
-        if (!cargador) {
-          return ws.close(4005, "Cargador not found");
+      if (role !== "monitor") {
+        try {
+          cargador = await Cargador.findByPk(cargadorId, { 
+            attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
+          });
+          if (!cargador) {
+            return ws.close(4005, "Cargador not found");
+          }
+        } catch (err) {
+          console.error("Error checking Cargador:", err);
+          return ws.close(5000, "DB Error");
         }
-      } catch (err) {
-        console.error("Error checking Cargador:", err);
-        return ws.close(5000, "DB Error");
       }
 
       // 2. Autenticación OPCIONAL - Si hay token, validamos y guardamos info
@@ -87,6 +97,57 @@ function initWebSocketServer(server) {
         // Delegamos el manejo de mensajes
         ws.on("message", (data) => messageHandler.handlePublisherMessage(cargadorId, data));
         ws.on("close", () => pubsub.removePublisher(cargadorId));
+
+      } else if (role === "monitor") {
+        // NUEVO: Rol Monitor para dashboard de estación
+        const { Estacion, SesionCarga, User } = require("../models");
+        
+        // Validar que la estación existe
+        const estacion = await Estacion.findByPk(estacionId);
+        if (!estacion) {
+          return ws.close(4005, "Estación no encontrada");
+        }
+
+        pubsub.addMonitor(estacionId, ws);
+
+        // Obtener estado inicial de la estación
+        const cargadores = await Cargador.findAll({
+          where: { id_estacion: estacionId },
+          attributes: ['id_cargador', 'tipo_carga', 'capacidad_kw', 'estado']
+        });
+
+        const sesionesActivas = await SesionCarga.findAll({
+          where: { 
+            id_cargador: cargadores.map(c => c.id_cargador),
+            estado: 'activa'
+          },
+          attributes: ['id_sesion', 'id_cargador', 'fecha_inicio']
+        });
+
+        // Enviar estado inicial al monitor
+        ws.send(JSON.stringify({
+          type: "estado_estacion",
+          estacionId: parseInt(estacionId),
+          cargadores: cargadores.map(c => {
+            const sesionActiva = sesionesActivas.find(s => s.id_cargador === c.id_cargador);
+            return {
+              id_cargador: c.id_cargador,
+              tipo_carga: c.tipo_carga,
+              capacidad_kw: parseFloat(c.capacidad_kw || 0),
+              estado: c.estado,
+              conectado: pubsub.isPublisherConnected(c.id_cargador),
+              sesion_activa: sesionActiva ? {
+                id_sesion: sesionActiva.id_sesion,
+                fecha_inicio: sesionActiva.fecha_inicio
+              } : null
+            };
+          }),
+          timestamp: new Date().toISOString()
+        }));
+
+        // Delegamos el manejo de mensajes del monitor
+        ws.on("message", (data) => messageHandler.handleMonitorMessage(estacionId, ws, data));
+        ws.on("close", () => pubsub.removeMonitor(ws));
 
       } else {
         // rol 'client' (app móvil o backoffice)

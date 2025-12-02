@@ -4,6 +4,7 @@ const WebSocket = require("ws");
 // Usamos cargadorId como el "tópico"
 const publishers = new Map(); // cargadorId -> ws (publisher)
 const subscribers = new Map(); // cargadorId -> Set<ws> (subscribers)
+const monitors = new Map(); // estacionId -> Set<ws> (monitors)
 
 /**
  * Registra un publisher (cargador físico)
@@ -117,6 +118,116 @@ function sendToPublisher(cargadorId, message) {
   return false; // Publisher no conectado
 }
 
+/**
+ * Añade un monitor (dashboard de estación)
+ * @param {string} estacionId 
+ * @param {WebSocket} ws 
+ */
+function addMonitor(estacionId, ws) {
+  const key = String(estacionId);
+  if (!monitors.has(key)) {
+    monitors.set(key, new Set());
+  }
+  monitors.get(key).add(ws);
+  ws._monitoringStation = key;
+  console.log(`[Monitor] Cliente conectado para monitorear estación ${estacionId}`);
+}
+
+/**
+ * Elimina un monitor
+ * @param {WebSocket} ws 
+ */
+function removeMonitor(ws) {
+  const key = ws._monitoringStation;
+  if (!key) return;
+  const set = monitors.get(key);
+  if (set) {
+    set.delete(ws);
+    if (set.size === 0) {
+      monitors.delete(key);
+    }
+  }
+  console.log(`[Monitor] Cliente desconectado de estación ${key}`);
+}
+
+/**
+ * Envía un mensaje a TODOS los monitores de una estación
+ * @param {string} estacionId 
+ * @param {object} message 
+ */
+function broadcastToMonitors(estacionId, message) {
+  const key = String(estacionId);
+  const set = monitors.get(key);
+  if (!set || set.size === 0) return;
+
+  const payload = JSON.stringify(message);
+  let enviados = 0;
+  set.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+      enviados++;
+    }
+  });
+  
+  if (enviados > 0) {
+    console.log(`[Monitor] Broadcast a ${enviados} monitor(es) de estación ${estacionId}: ${message.type}`);
+  }
+}
+
+/**
+ * Envía el estado completo actualizado de una estación a sus monitores
+ * @param {number} estacionId 
+ */
+async function notifyStationStatus(estacionId) {
+  const key = String(estacionId);
+  const set = monitors.get(key);
+  if (!set || set.size === 0) return; // No hay monitores conectados
+
+  try {
+    const { Cargador, SesionCarga } = require('../models');
+
+    // Obtener todos los cargadores de la estación
+    const cargadores = await Cargador.findAll({
+      where: { id_estacion: estacionId },
+      attributes: ['id_cargador', 'tipo_carga', 'capacidad_kw', 'estado']
+    });
+
+    // Obtener sesiones activas
+    const sesionesActivas = await SesionCarga.findAll({
+      where: {
+        id_cargador: cargadores.map(c => c.id_cargador),
+        estado: 'activa'
+      },
+      attributes: ['id_sesion', 'id_cargador', 'fecha_inicio']
+    });
+
+    // Construir el mensaje con estado de cargadores y sesiones
+    const mensaje = {
+      type: 'estado_estacion',
+      estacionId: parseInt(estacionId),
+      cargadores: cargadores.map(c => {
+        const sesionActiva = sesionesActivas.find(s => s.id_cargador === c.id_cargador);
+        return {
+          id_cargador: c.id_cargador,
+          tipo_carga: c.tipo_carga,
+          capacidad_kw: parseFloat(c.capacidad_kw || 0),
+          estado: c.estado,
+          conectado: isPublisherConnected(c.id_cargador),
+          sesion_activa: sesionActiva ? {
+            id_sesion: sesionActiva.id_sesion,
+            fecha_inicio: sesionActiva.fecha_inicio
+          } : null
+        };
+      }),
+      timestamp: new Date().toISOString()
+    };
+
+    broadcastToMonitors(estacionId, mensaje);
+  } catch (error) {
+    console.error(`[Monitor] Error al notificar estado de estación ${estacionId}:`, error);
+  }
+}
+
 module.exports = {
   registerPublisher,
   removePublisher,
@@ -125,5 +236,10 @@ module.exports = {
   broadcastToSubscribers,
   sendToPublisher,
   publishers, // Lo exportamos para el sync_request
-  isPublisherConnected
+  isPublisherConnected,
+  addMonitor,
+  removeMonitor,
+  broadcastToMonitors,
+  notifyStationStatus,
+  monitors
 };

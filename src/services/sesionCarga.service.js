@@ -183,6 +183,9 @@ class SesionCargaService {
         // Marcamos el cargador como 'ocupado'
         await cargador.update({ estado: "ocupado" });
 
+        // Notificar estado completo de la estación a monitores
+        await pubsub.notifyStationStatus(cargador.id_estacion);
+
 
         // Devolvemos la información esencial para el frontend
         return {
@@ -278,6 +281,7 @@ class SesionCargaService {
         }
 
         // --- 4. Actualizar DB y liberar Cargador ---
+        const estacionId = sesion.Cargador.id_estacion;
         await sesion.Cargador.update({ estado: "disponible" });
 
         const montoEstimadoNum = parseFloat(sesion.monto_estimado);
@@ -287,6 +291,9 @@ class SesionCargaService {
             monto_final: montoFinalNum,
             tiempo_transcurrido_min: tiempoTranscurridoMin,
         });
+
+        // Notificar estado completo de la estación a monitores
+        await pubsub.notifyStationStatus(estacionId);
 
         // --- 5. Notificar al usuario vía WebSocket ---
         const mensajeFinal = {
