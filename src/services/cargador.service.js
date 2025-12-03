@@ -40,15 +40,27 @@ async function getCargadoresDisponiblesPorTipo(id_estacion, tipoCarga) {
         throw new Error('Id de estación inválido');
     }
 
-    // const tiposValidos = ['rapida', 'lenta'];
-    // if (!tiposValidos.includes(tipoCarga?.toLowerCase())) {
-    //     throw new Error('Tipo de carga inválido. Debe ser "rapida" o "lenta"');
-    // }
-
     const estacion = await Estacion.findByPk(id);
     if (!estacion) {
         throw new Error('Estación no encontrada');
     }
+
+    // Buscar la tarifa vigente para la estación y tipo de carga
+    const fechaActual = new Date();
+    const tarifa = await Tarifa.findOne({
+        where: {
+            id_estacion: id,
+            tipo_carga: tipoCarga.toLowerCase(),
+            fecha_inicio_vigencia: {
+                [Op.lte]: fechaActual
+            },
+            [Op.or]: [
+                { fecha_fin_vigencia: null },
+                { fecha_fin_vigencia: { [Op.gte]: fechaActual } }
+            ]
+        },
+        order: [['fecha_inicio_vigencia', 'DESC']]
+    });
 
     const cargadores = await Cargador.findAll({
         where: { 
@@ -59,7 +71,12 @@ async function getCargadoresDisponiblesPorTipo(id_estacion, tipoCarga) {
         order: [['id_cargador', 'ASC']], 
     });
 
-    return cargadores;
+    return {
+        cargadores,
+        tarifa: tarifa ? {
+            costo_tiempo_min: tarifa.costo_tiempo_min,
+        } : null
+    };
 }
 
 /**
