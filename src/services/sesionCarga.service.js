@@ -141,7 +141,7 @@ class SesionCargaService {
 
         // --- 5. ENVIAR COMANDO A IOT ---
         try {
-            await IotService.sendCommand(cargador.id_cargador, true, {
+            await IotService.sendCommand( 'iniciar_carga',cargador.id_cargador, true, {
                 duraciion_minutos: durationMinutes,
                 sesionId: sesion.id_sesion,
                 userId: userId,
@@ -240,7 +240,7 @@ class SesionCargaService {
 
         // --- 2. ENVIAR COMANDO STOP A IOT ---
         try {
-            await IotService.sendCommand(sesion.id_cargador, false, {
+            await IotService.sendCommand( 'detener_carga',sesion.id_cargador, false, {
                 sesionId: sesion.id_sesion,
                 razon: "detencion_manual",
             });
