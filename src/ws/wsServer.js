@@ -212,18 +212,7 @@ function initWebSocketServer(server) {
           timestamp: new Date().toISOString()
         }));
 
-        // Sincronización inicial: Pedir al IoT el estado del cargador específico
-        if (publisherConectado) {
-          console.log(`[WS] Enviando sync_request para cargador ${cargadorId}`);
-          pub.send(JSON.stringify({ 
-            type: "sync_request",
-            target_cargador_id: parseInt(cargadorId),
-            from: "server",
-            timestamp: new Date().toISOString()
-          }));
-        } else {
-          console.log(`[WS] IoT no conectado para cargador ${cargadorId}. Estado desde BD: ${cargador.estado}`);
-        }
+    
 
         // Delegamos el manejo de mensajes
         ws.on("message", (data) => messageHandler.handleClientMessage(cargadorId, ws, data));
