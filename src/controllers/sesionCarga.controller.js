@@ -96,6 +96,27 @@ class SesionCargaController {
             return res.error(err.status || 500, err.message || 'Error al obtener la tarifa');
         }
     }
+
+    /**
+     * POST /api/sessions/stop-by-charger/:id_cargador
+     * Finaliza la sesión de carga desde el monitor de la estación.
+     * No requiere autenticación de usuario, solo ID del cargador.
+     */
+    static async stopSessionByCharger(req, res) {
+        try {
+            const chargerId = Number(req.params.id_cargador);
+
+            if (isNaN(chargerId)) {
+                return res.error(422, 'ID de cargador inválido');
+            }
+
+            const result = await SesionCargaService.stopChargeSessionByCharger(chargerId);
+            return res.ok(result, 'Sesión de carga finalizada desde monitor y cobro completado');
+        } catch (err) {
+            console.error('Error en SesionCargaController.stopSessionByCharger:', err);
+            return res.error(err.status || 500, err.message || 'Error al finalizar la sesión desde monitor');
+        }
+    }
 }
 
 module.exports = { SesionCargaController };

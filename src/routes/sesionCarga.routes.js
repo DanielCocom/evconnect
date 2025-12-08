@@ -324,4 +324,124 @@ router.get('/tarifa/:id_cargador', authenticateToken, SesionCargaController.getC
  */
 router.post('/stop/:id', authenticateToken, SesionCargaController.stopSession);
 
+/**
+ * @swagger
+ * /api/sessions/stop-by-charger/{id_cargador}:
+ *   post:
+ *     summary: Cambiar Cargador a Fuera de Servicio desde Monitor
+ *     description: |
+ *       Este endpoint permite al monitor de la estación cambiar el estado de un cargador
+ *       a "fuera_servicio". No requiere autenticación de usuario ya que es utilizado
+ *       por el sistema de monitoreo interno.
+ *       
+ *       **Casos de uso:**
+ *       - Personal de la estación necesita poner un cargador en mantenimiento
+ *       - Sistema de monitoreo detecta una anomalía en el cargador
+ *       - Emergencia que requiere desactivación inmediata del cargador
+ *       - Mantenimiento preventivo programado
+ *       
+ *       **Proceso completo:**
+ *       1. Busca el cargador por ID
+ *       2. Cambia el estado del cargador a "fuera_servicio"
+ *       3. Envía comando de cambio de estado al dispositivo IoT (Publisher)
+ *       4. Notifica a los usuarios móviles conectados (Subscribers) vía WebSocket
+ *       5. Notifica el cambio de estado a todos los monitores de la estación
+ *       
+ *       **Notificaciones WebSocket:**
+ *       - **Publisher (IoT):** Recibe comando 'cambio_estado' con el nuevo estado
+ *       - **Subscribers (Usuarios):** Reciben mensaje tipo 'cambio_estado_cargador'
+ *       - **Monitores:** Reciben actualización completa del estado de la estación
+ *       
+ *       **Importante:**
+ *       - Este endpoint NO finaliza sesiones activas ni procesa pagos
+ *       - Solo cambia el estado del cargador y notifica a los clientes
+ *       - Las sesiones activas deben finalizarse con otro endpoint
+ *     tags: [Sesiones de Carga]
+ *     parameters:
+ *       - in: path
+ *         name: id_cargador
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del cargador a cambiar de estado
+ *         example: 45
+ *     responses:
+ *       200:
+ *         description: Estado del cargador cambiado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Sesión de carga finalizada desde monitor y cobro completado"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id_cargador:
+ *                       type: integer
+ *                       description: ID del cargador modificado
+ *                       example: 45
+ *                     estado_anterior:
+ *                       type: string
+ *                       description: Estado previo del cargador
+ *                       example: "disponible"
+ *                     estado_nuevo:
+ *                       type: string
+ *                       description: Nuevo estado del cargador
+ *                       example: "fuera_servicio"
+ *                     mensaje:
+ *                       type: string
+ *                       description: Mensaje descriptivo del resultado
+ *                       example: "Cargador #45 cambiado a fuera de servicio y clientes notificados."
+ *       404:
+ *         description: Cargador no encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Cargador #45 no encontrado."
+ *                 data:
+ *                   type: object
+ *                   nullable: true
+ *                   example: null
+ *       422:
+ *         description: ID de cargador inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "ID de cargador inválido"
+ *       500:
+ *         description: Error al comunicarse con IoT o WebSocket
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Error al cambiar el estado del cargador"
+ */
+router.post('/stop-by-charger/:id_cargador', SesionCargaController.stopSessionByCharger);
+
 module.exports = router;

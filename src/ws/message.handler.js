@@ -385,6 +385,40 @@ async function handleMonitorMessage(estacionId, ws, data) {
     if (msg.command === "solicitar_resumen") {
       // Devolver resumen actualizado de la estación usando la función helper
       await pubsub.notifyStationStatus(estacionId);
+    } else if (msg.command === "detener_carga") {
+      // ¡NUEVO! Comando desde el monitor para detener una carga
+      const cargadorId = msg.cargadorId || msg.id_cargador;
+      
+      if (!cargadorId) {
+        return ws.send(JSON.stringify({
+          type: "error",
+          message: "cargadorId es requerido para detener carga"
+        }));
+      }
+
+      console.log(`[Monitor] Comando detener_carga recibido para cargador ${cargadorId}`);
+
+      try {
+        const { SesionCargaService } = require('../services/sesionCarga.service');
+        const resultado = await SesionCargaService.stopChargeSessionByCharger(parseInt(cargadorId));
+        
+        // Confirmar al monitor que la detención fue exitosa
+        ws.send(JSON.stringify({
+          type: "carga_detenida",
+          cargadorId: parseInt(cargadorId),
+          resultado: resultado,
+          timestamp: new Date().toISOString()
+        }));
+
+        console.log(`[Monitor] Carga detenida exitosamente en cargador ${cargadorId}`);
+      } catch (error) {
+        console.error(`[Monitor] Error al detener carga en cargador ${cargadorId}:`, error);
+        ws.send(JSON.stringify({
+          type: "error",
+          message: error.message || "Error al detener la carga",
+          cargadorId: parseInt(cargadorId)
+        }));
+      }
     }
   } catch (err) {
     console.error("Error processing monitor message:", err);

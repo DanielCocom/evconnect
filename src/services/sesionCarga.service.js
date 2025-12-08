@@ -331,6 +331,70 @@ class SesionCargaService {
     }
 
     /**
+     * Finaliza la sesión de carga desde el monitor (sin validar userId).
+     * Cambia el estado del cargador a "fuera_servicio" y notifica a los clientes WebSocket.
+     * @param {number} chargerId - ID del cargador.
+     * @returns {Object} Información del cambio de estado.
+     */
+    static async stopChargeSessionByCharger(chargerId) {
+        const cargador = await Cargador.findByPk(chargerId);
+
+        if (!cargador) {
+            throw {
+                status: 404,
+                message: `Cargador #${chargerId} no encontrado.`,
+            };
+        }
+
+        const estadoAnterior = cargador.estado;
+        const estacionId = cargador.id_estacion;
+
+        // --- 1. Cambiar estado del cargador a "fuera_servicio" ---
+        await cargador.update({ estado: "fuera_servicio" });
+
+        console.log(
+            `[SesionCarga] Cargador #${chargerId} cambiado de estado "${estadoAnterior}" a "fuera_servicio"`
+        );
+
+        // --- 2. Notificar al cliente Publisher (IoT) ---
+        const mensajePublisher = {
+            type: "cambio_estado_cargador",
+            id_cargador: chargerId,
+            estado_anterior: estadoAnterior,
+            estado_nuevo: "fuera_servicio",
+            timestamp: new Date().toISOString(),
+        };
+
+        try {
+            await IotService.sendCommand('detener_carga', chargerId, false, {
+                estado: "fuera_servicio",
+                razon: "detencion_monitor",
+            });
+            console.log(
+                `[SesionCarga] Notificación enviada al Publisher (IoT) del cargador ${chargerId}`
+            );
+        } catch (iotError) {
+            console.error(
+                "[SesionCarga] Error al notificar al Publisher (IoT):",
+                iotError
+            );
+        }
+
+        // --- 3. Notificar a los clientes Subscribers (usuarios móviles) ---
+        pubsub.broadcastToSubscribers(chargerId, mensajePublisher);
+
+        // --- 4. Notificar estado completo de la estación a monitores ---
+        await pubsub.notifyStationStatus(estacionId);
+
+        return {
+            id_cargador: chargerId,
+            estado_anterior: estadoAnterior,
+            estado_nuevo: "fuera_servicio",
+            mensaje: `Cargador #${chargerId} cambiado a fuera de servicio y clientes notificados.`,
+        };
+    }
+
+    /**
      * Obtener el estado actual de la sesión activa de un usuario (para polling de la App Móvil).
      * @param {number} userId - ID del usuario.
      * @returns {Object} Detalles de la sesión activa.
