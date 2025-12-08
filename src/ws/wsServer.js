@@ -6,36 +6,32 @@ const messageHandler = require("./message.handler");
 
 let wss;
 
-// ⏱️ CAMBIO 1: Aumentamos la tolerancia a 60 segundos (60000 ms).
-// Esto evita matar la conexión si el ESP32 se bloquea unos segundos procesando datos.
+// ⏱️ Configuración de tiempos
+// El servidor revisará conexiones muertas cada 60s.
+// Como el ESP32 envía heartbeat cada 20s, esto da margen de sobra.
 const HEARTBEAT_INTERVAL = 60000; 
 
 function initWebSocketServer(server) {
-  // Configuración explícita de clientTracking (aunque es true por defecto)
   wss = new WebSocket.WebSocketServer({ server, path: "/ws", clientTracking: true });
 
-  // Heartbeat (Latido)
+  // --- Heartbeat Automático del Servidor ---
   const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) {
-        // 🔍 CAMBIO 2: Log para confirmar si el servidor está matando la conexión
         console.log(`💀 [WS Server] Terminando conexión inactiva (Ping Timeout): Role=${ws.userRole || 'anon'}, ID=${ws.cargadorId || ws.estacionId || '?'}`);
         return ws.terminate();
       }
-
       ws.isAlive = false;
-      ws.ping();
+      ws.ping(); // Ping nativo (backup por si el cliente soporta ping/pong estándar)
     });
   }, HEARTBEAT_INTERVAL);
 
   wss.on("connection", async (ws, req) => {
     ws.isAlive = true;
     
-    // Al recibir PONG, confirmamos que sigue vivo
+    // Si el cliente responde al ping nativo (backup)
     ws.on("pong", () => {
         ws.isAlive = true;
-        
-         console.log("💓 Pong recibido de cliente"); 
     });
 
     try {
@@ -45,116 +41,97 @@ function initWebSocketServer(server) {
       const cargadorId = url.searchParams.get("cargadorId"); 
       const estacionId = url.searchParams.get("estacionId"); 
 
-      // Guardamos estos IDs en el objeto ws para usarlos en los logs de desconexión
+      // Guardamos metadatos en el socket para logs y lógica
       ws.cargadorId = cargadorId;
       ws.estacionId = estacionId;
+      ws.role = role;
 
-      // Validación según rol
+      // --- VALIDACIONES DE PARÁMETROS ---
+      if (role === "publisher" && !estacionId) return ws.close(4001, "Falta estacionId");
+      if (role === "monitor" && !estacionId) return ws.close(4001, "Falta estacionId");
+      if (role === "client" && !cargadorId) return ws.close(4001, "Falta cargadorId");
+
+      // ------------------------------------------------------
+      // 🔌 ROL: PUBLISHER (ESP32 - IoT)
+      // ------------------------------------------------------
       if (role === "publisher") {
-        if (!estacionId) {
-          return ws.close(4001, "estacionId es requerido para rol publisher");
-        }
-      } else if (role === "monitor") {
-        if (!estacionId) {
-          return ws.close(4001, "estacionId es requerido para rol monitor");
-        }
-      } else {
-        // role === "client"
-        if (!cargadorId) {
-          return ws.close(4001, "cargadorId es requerido para rol client");
-        }
-      }
-      
-      // 1. Validar según el rol (Base de datos)
-      let cargador;
-      let estacion;
-      let cargadoresEstacion = [];
-      
-      if (role === "client") {
-        try {
-          cargador = await Cargador.findByPk(cargadorId, { 
-            attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
-          });
-          if (!cargador) {
-            return ws.close(4005, "Cargador not found");
-          }
-        } catch (err) {
-          console.error("Error checking Cargador:", err);
-          return ws.close(5000, "DB Error");
-        }
-      } else if (role === "publisher") {
+        // Validación de base de datos
         try {
           const { Estacion } = require("../models");
-          estacion = await Estacion.findByPk(estacionId);
-          if (!estacion) {
-            return ws.close(4005, "Estación not found");
-          }
+          const estacion = await Estacion.findByPk(estacionId);
+          if (!estacion) return ws.close(4005, "Estación not found");
           
-          cargadoresEstacion = await Cargador.findAll({
+          const cargadoresEstacion = await Cargador.findAll({
             where: { id_estacion: estacionId },
             attributes: ['id_cargador', 'estado', 'tipo_carga']
           });
           
-          if (cargadoresEstacion.length === 0) {
-            return ws.close(4006, "No hay cargadores en esta estación");
-          }
+          if (cargadoresEstacion.length === 0) return ws.close(4006, "Sin cargadores");
+
+          const cargadorIds = cargadoresEstacion.map(c => c.id_cargador);
+          ws._stationChargers = cargadorIds; 
+
+          // Registro en PubSub
+          await pubsub.registerPublisher(estacionId, ws, cargadorIds);
+          
+          // Enviar estado inicial
+          const estadoActual = {
+            type: "estado_sincronizado",
+            role: "publisher",
+            estacionId: parseInt(estacionId),
+            cargadores: cargadoresEstacion.map(c => ({
+              id_cargador: c.id_cargador,
+              estado: c.estado,
+              tipo_carga: c.tipo_carga
+            })),
+            timestamp: new Date().toISOString()
+          };
+          ws.send(JSON.stringify(estadoActual));
+
+          // 🔥 CAMBIO CRÍTICO 1: Interceptamos el mensaje para detectar el Heartbeat JSON 🔥
+          ws.on("message", (data) => {
+            try {
+              const messageString = data.toString();
+              
+              // 1. Detectar si es el Heartbeat del ESP32
+              if (messageString.includes("heartbeat")) {
+                 // Intentamos parsear para estar seguros
+                 const parsed = JSON.parse(messageString);
+                 if (parsed.tipo === "heartbeat" || parsed.type === "heartbeat") {
+                     ws.isAlive = true; // ✅ MANTENEMOS LA CONEXIÓN VIVA
+                     // console.log(`💓 Heartbeat JSON recibido de Estación ${estacionId}`);
+                     return; // Detenemos aquí, no lo enviamos al messageHandler
+                 }
+              }
+              
+              // 2. Si no es heartbeat, es un mensaje de negocio normal
+              messageHandler.handlePublisherMessage(estacionId, ws, data);
+
+            } catch (err) {
+              console.error(`Error procesando mensaje Publisher ${estacionId}:`, err);
+            }
+          });
+
+          // 🔥 CAMBIO CRÍTICO 2: Pasamos 'ws' para evitar borrar sesiones nuevas (Race Condition) 🔥
+          ws.on("close", async () => {
+            const chargerIds = ws._stationChargers || [];
+            await pubsub.removePublisher(estacionId, ws, chargerIds);
+          });
+
         } catch (err) {
-          console.error("Error checking Estacion:", err);
+          console.error("Error DB Publisher:", err);
           return ws.close(5000, "DB Error");
         }
-      }
 
-      // 2. Autenticación OPCIONAL
-      if (token) {
-        try {
-          const tokenPayload = verifyToken(token); 
-          ws.userId = tokenPayload.id; 
-          ws.userRole = tokenPayload.role;
-          ws.authenticated = true;
-        } catch (err) {
-          console.warn("Token inválido, continuando sin autenticación:", err.message);
-          ws.authenticated = false;
-        }
-      } else {
-        ws.authenticated = false;
-      }
-      
-      // 3. Ruteo de Conexión
-      if (role === "publisher") {
-        const cargadorIds = cargadoresEstacion.map(c => c.id_cargador);
-        
-        // Guardamos ids en ws para limpieza posterior
-        ws._stationChargers = cargadorIds; 
-
-        pubsub.registerPublisher(estacionId, ws, cargadorIds);
-        await pubsub.registerPublisher(estacionId, ws, cargadorIds);
-        
-        const estadoActual = {
-          type: "estado_sincronizado",
-          role: "publisher",
-          estacionId: parseInt(estacionId),
-          cargadores: cargadoresEstacion.map(c => ({
-            id_cargador: c.id_cargador,
-            estado: c.estado,
-            tipo_carga: c.tipo_carga
-          })),
-          timestamp: new Date().toISOString()
-        };
-        ws.send(JSON.stringify(estadoActual));
-
-        ws.on("message", (data) => messageHandler.handlePublisherMessage(estacionId, ws, data));
-        ws.on("close", async () => {
-          const chargerIds = ws._stationChargers || [];
-          await pubsub.removePublisher(estacionId, chargerIds);
-        });
-
-      } else if (role === "monitor") {
+      } 
+      // ------------------------------------------------------
+      // 🖥️ ROL: MONITOR (Dashboard)
+      // ------------------------------------------------------
+      else if (role === "monitor") {
         const { Estacion, SesionCarga } = require("../models");
         
         const estacion = await Estacion.findByPk(estacionId);
-        if (!estacion) {
-          return ws.close(4005, "Estación no encontrada");
-        }
+        if (!estacion) return ws.close(4005, "Estación no encontrada");
 
         pubsub.addMonitor(estacionId, ws);
 
@@ -194,20 +171,40 @@ function initWebSocketServer(server) {
         ws.on("message", (data) => messageHandler.handleMonitorMessage(estacionId, ws, data));
         ws.on("close", () => pubsub.removeMonitor(ws));
 
-      } else {
-        // Rol 'client'
+      } 
+      // ------------------------------------------------------
+      // 📱 ROL: CLIENT (App Móvil)
+      // ------------------------------------------------------
+      else {
+        // role === "client"
+        let cargador;
+        try {
+          cargador = await Cargador.findByPk(cargadorId, { 
+            attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion', 'capacidad_kw'] 
+          });
+          if (!cargador) return ws.close(4005, "Cargador not found");
+        } catch (err) {
+          console.error("Error checking Cargador:", err);
+          return ws.close(5000, "DB Error");
+        }
+
+        // Auth opcional
+        if (token) {
+          try {
+            const tokenPayload = verifyToken(token); 
+            ws.userId = tokenPayload.id; 
+            ws.userRole = tokenPayload.role;
+            ws.authenticated = true;
+          } catch (err) {
+            ws.authenticated = false;
+          }
+        } else {
+          ws.authenticated = false;
+        }
+
         pubsub.addSubscriber(cargadorId, ws);
 
-        let pub = null;
-        let publisherConectado = false;
-        
-        for (const [estId, pubWs] of pubsub.publishers.entries()) {
-          if (pubWs._stationChargers && pubWs._stationChargers.includes(parseInt(cargadorId))) {
-            pub = pubWs;
-            publisherConectado = pubWs.readyState === WebSocket.OPEN;
-            break;
-          }
-        }
+        const publisherConectado = pubsub.isPublisherConnected(cargadorId);
 
         ws.send(JSON.stringify({ 
           type: "subscribed", 
@@ -215,7 +212,7 @@ function initWebSocketServer(server) {
           estado_cargador: cargador.estado,
           tipo_carga: cargador.tipo_carga,
           capacidad_kw: cargador.capacidad_kw,
-          conectado: publisherConectado ?? false,
+          conectado: publisherConectado,
           timestamp: new Date().toISOString()
         }));
 
@@ -230,7 +227,7 @@ function initWebSocketServer(server) {
   });
 
   wss.on("close", () => clearInterval(interval));
-  console.log("✅ WebSocket server initialized on /ws (Timeout: 60s)");
+  console.log("✅ WebSocket server initialized on /ws (Soporte JSON Heartbeat Activo)");
 }
 
 module.exports = { 
