@@ -113,28 +113,34 @@ class ReporteService {
      */
     static async getUserSessionById(id_usuario) {
         const userSessions = await SesionCarga.findAll({
-            where: { id_usuario: id_usuario },
+            where: { 
+                id_usuario: id_usuario,
+                estado: 'finalizada' // Solo sesiones finalizadas
+            },
             include: [
                 {
                     model: Cargador,
-                    attributes: ['id_cargador', 'tipo_carga', 'estado'],
+                    attributes: [ 'tipo_carga'],
                     as: 'Cargador',
+                    required: true,
                     include: [
                         {
                             model: Estacion,
                             attributes: ['nombre_estacion', 'direccion'],
-                            as: 'Estacion'
+                            as: 'Estacion',
+                            required: true
                         }
                     ]
                 },
                 {
-                    model: User,
-                    as: "Usuario"
-                   
+                    model: require('../models').MetodoPago,
+                    as: 'MetodoPago',
+                    attributes: ['id_pago', 'tipo'],
+                    required: false // false en caso de que no tenga método de pago asociado
                 }
             ],
-            attributes: ['id_sesion', 'id_cargador', 'fecha_inicio', 'fecha_fin', 
-                'estado', 'energia_consumida_kwh', 'monto_final', 'metodo_pago_utilizado'],
+            attributes: ['id_sesion', 'fecha_inicio', 'fecha_fin', 
+                'estado', 'monto_final'],
             order: [['fecha_fin', 'DESC']]
         });
 

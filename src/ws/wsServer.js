@@ -1,35 +1,53 @@
-// src/ws/index.js
 const WebSocket = require("ws");
 const { verifyToken } = require("../utils/jwt");
-const { Cargador } = require("../models"); // Usamos Cargador, no Estacion
+const { Cargador } = require("../models"); 
 const pubsub = require("./pubsub");
 const messageHandler = require("./message.handler");
 
 let wss;
-const HEARTBEAT_INTERVAL = 30000;
+
+// ⏱️ CAMBIO 1: Aumentamos la tolerancia a 60 segundos (60000 ms).
+// Esto evita matar la conexión si el ESP32 se bloquea unos segundos procesando datos.
+const HEARTBEAT_INTERVAL = 60000; 
 
 function initWebSocketServer(server) {
-  wss = new WebSocket.WebSocketServer({ server, path: "/ws" });
+  // Configuración explícita de clientTracking (aunque es true por defecto)
+  wss = new WebSocket.WebSocketServer({ server, path: "/ws", clientTracking: true });
 
-  // Heartbeat
+  // Heartbeat (Latido)
   const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
-      if (ws.isAlive === false) return ws.terminate();
+      if (ws.isAlive === false) {
+        // 🔍 CAMBIO 2: Log para confirmar si el servidor está matando la conexión
+        console.log(`💀 [WS Server] Terminando conexión inactiva (Ping Timeout): Role=${ws.userRole || 'anon'}, ID=${ws.cargadorId || ws.estacionId || '?'}`);
+        return ws.terminate();
+      }
+
       ws.isAlive = false;
       ws.ping();
     });
   }, HEARTBEAT_INTERVAL);
 
-    wss.on("connection", async (ws, req) => {
+  wss.on("connection", async (ws, req) => {
     ws.isAlive = true;
-    ws.on("pong", () => (ws.isAlive = true));
+    
+    // Al recibir PONG, confirmamos que sigue vivo
+    ws.on("pong", () => {
+        ws.isAlive = true;
+        
+         console.log("💓 Pong recibido de cliente"); 
+    });
 
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const token = url.searchParams.get("token");
       const role = (url.searchParams.get("role") || "client").toLowerCase();
-      const cargadorId = url.searchParams.get("cargadorId"); // Para client
-      const estacionId = url.searchParams.get("estacionId"); // Para publisher y monitor
+      const cargadorId = url.searchParams.get("cargadorId"); 
+      const estacionId = url.searchParams.get("estacionId"); 
+
+      // Guardamos estos IDs en el objeto ws para usarlos en los logs de desconexión
+      ws.cargadorId = cargadorId;
+      ws.estacionId = estacionId;
 
       // Validación según rol
       if (role === "publisher") {
@@ -47,13 +65,12 @@ function initWebSocketServer(server) {
         }
       }
       
-      // 1. Validar según el rol
+      // 1. Validar según el rol (Base de datos)
       let cargador;
       let estacion;
       let cargadoresEstacion = [];
       
       if (role === "client") {
-        // Validar que el cargador existe
         try {
           cargador = await Cargador.findByPk(cargadorId, { 
             attributes: ['id_cargador', 'estado', 'tipo_carga', 'id_estacion'] 
@@ -66,7 +83,6 @@ function initWebSocketServer(server) {
           return ws.close(5000, "DB Error");
         }
       } else if (role === "publisher") {
-        // Validar que la estación existe y obtener sus cargadores
         try {
           const { Estacion } = require("../models");
           estacion = await Estacion.findByPk(estacionId);
@@ -88,11 +104,11 @@ function initWebSocketServer(server) {
         }
       }
 
-      // 2. Autenticación OPCIONAL - Si hay token, validamos y guardamos info
+      // 2. Autenticación OPCIONAL
       if (token) {
         try {
-          const tokenPayload = verifyToken(token); // Usamos tu JWT util
-          ws.userId = tokenPayload.id; // ¡Guardamos el ID del usuario en la conexión!
+          const tokenPayload = verifyToken(token); 
+          ws.userId = tokenPayload.id; 
           ws.userRole = tokenPayload.role;
           ws.authenticated = true;
         } catch (err) {
@@ -105,15 +121,14 @@ function initWebSocketServer(server) {
       
       // 3. Ruteo de Conexión
       if (role === "publisher") {
-        // Lógica de seguridad: Solo un rol 'admin' o 'tecnico' puede ser publisher?
-        // if (ws.userRole !== 'admin') {
-        //   return ws.close(4001, "No autorizado para ser publisher");
-        // }
-
         const cargadorIds = cargadoresEstacion.map(c => c.id_cargador);
+        
+        // Guardamos ids en ws para limpieza posterior
+        ws._stationChargers = cargadorIds; 
+
+        pubsub.registerPublisher(estacionId, ws, cargadorIds);
         await pubsub.registerPublisher(estacionId, ws, cargadorIds);
         
-        // Enviar el estado actual de todos los cargadores de la estación
         const estadoActual = {
           type: "estado_sincronizado",
           role: "publisher",
@@ -127,7 +142,6 @@ function initWebSocketServer(server) {
         };
         ws.send(JSON.stringify(estadoActual));
 
-        // Delegamos el manejo de mensajes del publisher (IoT)
         ws.on("message", (data) => messageHandler.handlePublisherMessage(estacionId, ws, data));
         ws.on("close", async () => {
           const chargerIds = ws._stationChargers || [];
@@ -135,10 +149,8 @@ function initWebSocketServer(server) {
         });
 
       } else if (role === "monitor") {
-        // NUEVO: Rol Monitor para dashboard de estación
-        const { Estacion, SesionCarga, User } = require("../models");
+        const { Estacion, SesionCarga } = require("../models");
         
-        // Validar que la estación existe
         const estacion = await Estacion.findByPk(estacionId);
         if (!estacion) {
           return ws.close(4005, "Estación no encontrada");
@@ -146,7 +158,6 @@ function initWebSocketServer(server) {
 
         pubsub.addMonitor(estacionId, ws);
 
-        // Obtener estado inicial de la estación
         const cargadores = await Cargador.findAll({
           where: { id_estacion: estacionId },
           attributes: ['id_cargador', 'tipo_carga', 'capacidad_kw', 'estado']
@@ -160,7 +171,6 @@ function initWebSocketServer(server) {
           attributes: ['id_sesion', 'id_cargador', 'fecha_inicio']
         });
 
-        // Enviar estado inicial al monitor
         ws.send(JSON.stringify({
           type: "estado_estacion",
           estacionId: parseInt(estacionId),
@@ -181,15 +191,13 @@ function initWebSocketServer(server) {
           timestamp: new Date().toISOString()
         }));
 
-        // Delegamos el manejo de mensajes del monitor
         ws.on("message", (data) => messageHandler.handleMonitorMessage(estacionId, ws, data));
         ws.on("close", () => pubsub.removeMonitor(ws));
 
       } else {
-        // rol 'client' (app móvil o backoffice)
+        // Rol 'client'
         pubsub.addSubscriber(cargadorId, ws);
 
-        // Verificar si el publisher (IoT) está conectado buscando la estación que tiene este cargador
         let pub = null;
         let publisherConectado = false;
         
@@ -201,7 +209,6 @@ function initWebSocketServer(server) {
           }
         }
 
-        // Enviar confirmación de suscripción con estado actual del cargador desde la BD
         ws.send(JSON.stringify({ 
           type: "subscribed", 
           cargadorId,
@@ -212,20 +219,6 @@ function initWebSocketServer(server) {
           timestamp: new Date().toISOString()
         }));
 
-        // Sincronización inicial: Pedir al IoT el estado del cargador específico
-        if (publisherConectado) {
-          console.log(`[WS] Enviando sync_request para cargador ${cargadorId}`);
-          pub.send(JSON.stringify({ 
-            type: "sync_request",
-            target_cargador_id: parseInt(cargadorId),
-            from: "server",
-            timestamp: new Date().toISOString()
-          }));
-        } else {
-          console.log(`[WS] IoT no conectado para cargador ${cargadorId}. Estado desde BD: ${cargador.estado}`);
-        }
-
-        // Delegamos el manejo de mensajes
         ws.on("message", (data) => messageHandler.handleClientMessage(cargadorId, ws, data));
         ws.on("close", () => pubsub.removeSubscriber(ws));
       }
@@ -237,11 +230,10 @@ function initWebSocketServer(server) {
   });
 
   wss.on("close", () => clearInterval(interval));
-  console.log("WebSocket server initialized on /ws");
+  console.log("✅ WebSocket server initialized on /ws (Timeout: 60s)");
 }
 
 module.exports = { 
   initWebSocketServer, 
-  // Exportamos broadcast para usarlo desde otros servicios (ej. un servicio de alertas)
   broadcastToSubscribers: pubsub.broadcastToSubscribers 
 };

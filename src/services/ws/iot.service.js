@@ -19,9 +19,10 @@ class IotService {
      * Envía un comando de control (START/STOP/RESET) a un cargador específico.
      * Llamado por el servicio de Mantenimiento (WEB-7)
      */
-    static sendCommand(id_cargador, isCharging, payload = {}) {
+    static sendCommand(type,  id_cargador, isCharging, payload = {}) {
         
         const message = {
+            type: type,
             cargando: isCharging,
             cargadorId: id_cargador,
             timestamp: new Date().toISOString(),

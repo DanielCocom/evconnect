@@ -387,6 +387,6 @@ router.get("/me", authenticateToken, UserController.profile);
  *               $ref: '#/components/schemas/ApiResponse'
  */
 
-router.get("/sessions", authenticateJWT, UserController.getUserSessions)
+router.get("/sessions", authenticateToken, UserController.getUserSessions)
 
 module.exports = router;

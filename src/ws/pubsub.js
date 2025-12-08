@@ -68,7 +68,7 @@ async function removePublisher(estacionId, cargadorIds = []) {
     });
   });
 
-  await notifyStationStatus(estacionId)
+   notifyStationStatus(estacionId)
 }
 
 
