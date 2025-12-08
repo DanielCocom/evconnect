@@ -111,7 +111,7 @@ function initWebSocketServer(server) {
         // }
 
         const cargadorIds = cargadoresEstacion.map(c => c.id_cargador);
-        pubsub.registerPublisher(estacionId, ws, cargadorIds);
+        await pubsub.registerPublisher(estacionId, ws, cargadorIds);
         
         // Enviar el estado actual de todos los cargadores de la estación
         const estadoActual = {
@@ -129,9 +129,9 @@ function initWebSocketServer(server) {
 
         // Delegamos el manejo de mensajes del publisher (IoT)
         ws.on("message", (data) => messageHandler.handlePublisherMessage(estacionId, ws, data));
-        ws.on("close", () => {
+        ws.on("close", async () => {
           const chargerIds = ws._stationChargers || [];
-          pubsub.removePublisher(estacionId, chargerIds);
+          await pubsub.removePublisher(estacionId, chargerIds);
         });
 
       } else if (role === "monitor") {

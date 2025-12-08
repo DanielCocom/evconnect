@@ -12,7 +12,7 @@ const monitors = new Map(); // estacionId -> Set<ws> (monitors)
  * @param {WebSocket} ws 
  * @param {Array} cargadorIds - IDs de todos los cargadores de la estación
  */
-function registerPublisher(estacionId, ws, cargadorIds = []) {
+async function registerPublisher(estacionId, ws, cargadorIds = []) {
   const key = String(estacionId);
   publishers.set(key, ws);
   ws._publisherForStation = key;
@@ -29,6 +29,8 @@ function registerPublisher(estacionId, ws, cargadorIds = []) {
       timestamp: new Date().toISOString()
     });
   });
+
+  await notifyStationStatus(estacionId)
 }
 
 /**
@@ -51,7 +53,7 @@ function isPublisherConnected(cargadorId) {
  * @param {string} estacionId 
  * @param {Array} cargadorIds - IDs de cargadores de la estación
  */
-function removePublisher(estacionId, cargadorIds = []) {
+async function removePublisher(estacionId, cargadorIds = []) {
   publishers.delete(String(estacionId));
 
   console.log(`[Publisher] IoT desconectado de estación ${estacionId}`);
@@ -65,6 +67,8 @@ function removePublisher(estacionId, cargadorIds = []) {
       timestamp: new Date().toISOString()
     });
   });
+
+  await notifyStationStatus(estacionId)
 }
 
 

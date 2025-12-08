@@ -10,7 +10,7 @@ if (!connectionString) {
 
 const sequelize = new Sequelize(connectionString, {
   dialect: 'postgres',
-  logging: process.env.NODE_ENV === "development" ? console.log : false,
+  logging:  false,
   
   // 2. Mantenemos las opciones de SSL que requiere Neon
   dialectOptions: {
